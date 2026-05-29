@@ -24,16 +24,61 @@ class MachineSectionReport extends Model
         'end_datetime',
         'loading_hours',
         'machine_stop_hours',
+        'stop_start_datetime',
+        'stop_end_datetime',
+        'stop_remarks',
+        'is_cycle_complete',
     ];
 
-    protected $casts = [
+protected $casts = [
         'row_no' => 'integer',
         'start_datetime' => 'datetime',
         'expected_end_datetime' => 'datetime',
         'end_datetime' => 'datetime',
-        'loading_hours' => 'decimal:2',
-        'machine_stop_hours' => 'decimal:2',
+        'loading_hours' => 'float',
+        'machine_stop_hours' => 'float',
+        'is_cycle_complete' => 'boolean',
     ];
+
+    /**
+     * Force numeric casting for loading_hours even if DB column is VARCHAR
+     */
+    protected function casts(): array
+    {
+        return parent::casts();
+    }
+
+    /**
+     * Mutator to ensure loading_hours is always numeric
+     */
+    public function setLoadingHoursAttribute($value): void
+    {
+        $this->attributes['loading_hours'] = $value === null || $value === '' ? null : (float) $value;
+    }
+
+    /**
+     * Accessor to ensure loading_hours is numeric
+     */
+    public function getLoadingHoursAttribute($value)
+    {
+        return $value === null ? null : (float) $value;
+    }
+
+    /**
+     * Mutator to ensure machine_stop_hours is always numeric
+     */
+    public function setMachineStopHoursAttribute($value): void
+    {
+        $this->attributes['machine_stop_hours'] = (float) $value;
+    }
+
+    /**
+     * Accessor to ensure machine_stop_hours is numeric
+     */
+    public function getMachineStopHoursAttribute($value)
+    {
+        return (float) $value;
+    }
 
     /**
      * Set the table name dynamically based on machine number and section

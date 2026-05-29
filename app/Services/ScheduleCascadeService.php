@@ -29,7 +29,8 @@ class ScheduleCascadeService
         int $machineNumber,
         string $section,
         int $rowId,
-        float $newMachineStopHours
+        float $newMachineStopHours,
+        ?string $remarks = null
     ): array {
         if ($newMachineStopHours < 0) {
             return [
@@ -65,9 +66,7 @@ class ScheduleCascadeService
 
         $model = MachineSectionReport::forTableName($tableName);
         
-        try {
-            DB::beginTransaction();
-
+        return DB::transaction(function () use ($machineNumber, $section, $rowId, $newMachineStopHours, $remarks, $model, $tableName) {
             // Get all rows ordered by row_no (maintains UI order)
             $allRows = $model->orderBy('row_no')->get();
             
@@ -75,11 +74,7 @@ class ScheduleCascadeService
             $targetRow = $allRows->firstWhere('id', $rowId);
             
             if (!$targetRow) {
-                DB::rollBack();
-                return [
-                    'success' => false,
-                    'message' => 'Row not found'
-                ];
+                throw new \Exception('Row not found');
             }
 
             $updatedRows = [];
@@ -92,7 +87,8 @@ class ScheduleCascadeService
             
             // Recalculate expected_end_datetime and end_datetime
             $startDatetime = $targetRow->start_datetime;
-            $loadingHours = $targetRow->loading_hours ?? 0;
+            $loadingHours = (float) ($targetRow->loading_hours ?? 0);
+            Log::debug('Cascade target row', ['loading_hours_type' => gettype($loadingHours), 'loading_hours_value' => $loadingHours]);
             
             // Expected end = start + loading_hours (if loading_hours exists)
             $expectedEndDatetime = $loadingHours > 0 
@@ -104,6 +100,7 @@ class ScheduleCascadeService
             
             // Update target row
             $targetRow->machine_stop_hours = $newMachineStopHours;
+            $targetRow->stop_remarks = $remarks;
             $targetRow->expected_end_datetime = $expectedEndDatetime;
             $targetRow->end_datetime = $newEndDatetime;
             $targetRow->save();
@@ -122,8 +119,9 @@ class ScheduleCascadeService
                 $newStartDatetime = $previousRow->end_datetime->copy();
                 
                 // Recalculate expected_end and end
-                $currentLoadingHours = $currentRow->loading_hours ?? 0;
-                $currentStopHours = $currentRow->machine_stop_hours ?? 0;
+                $currentLoadingHours = (float) ($currentRow->loading_hours ?? 0);
+                $currentStopHours = (float) ($currentRow->machine_stop_hours ?? 0);
+                Log::debug('Cascade current row', ['loading_hours_type' => gettype($currentLoadingHours), 'value' => $currentLoadingHours, 'stop_type' => gettype($currentStopHours), 'stop_value' => $currentStopHours]);
                 
                 // Expected end = start + loading_hours (if loading_hours exists)
                 $newExpectedEndDatetime = $currentLoadingHours > 0
@@ -144,23 +142,13 @@ class ScheduleCascadeService
                 Log::info("Cascaded update to row ID {$currentRow->id} in table {$tableName}");
             }
 
-            DB::commit();
-
             return [
                 'success' => true,
                 'updated_rows' => $updatedRows,
                 'updated_count' => count($updatedRows),
                 'message' => "Successfully updated {$rowId} and cascaded to " . (count($updatedRows) - 1) . " subsequent rows"
             ];
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error("Error in cascade update for table {$tableName}: " . $e->getMessage());
-            return [
-                'success' => false,
-                'message' => 'Error updating row: ' . $e->getMessage()
-            ];
-        }
+        });
     }
 
     /**
@@ -200,9 +188,7 @@ class ScheduleCascadeService
 
         $model = MachineSectionReport::forTableName($tableName);
         
-        try {
-            DB::beginTransaction();
-
+        return DB::transaction(function () use ($model, $tableName, $rows) {
             $savedRows = [];
             
             foreach ($rows as $index => $rowData) {
@@ -211,9 +197,10 @@ class ScheduleCascadeService
                 
                 // Parse datetime values
                 $startDatetime = Carbon::parse($rowData['start_datetime']);
-                $loadingHours = isset($rowData['loading_hours']) && $rowData['loading_hours'] !== null 
+                $loadingHours = isset($rowData['loading_hours']) && $rowData['loading_hours'] !== null && $rowData['loading_hours'] !== '' 
                     ? (float) $rowData['loading_hours'] 
                     : null;
+                Log::debug('SaveAllRows loading_hours', ['raw' => $rowData['loading_hours'], 'casted' => $loadingHours, 'type' => gettype($loadingHours)]);
                 $machineStopHours = (float) ($rowData['machine_stop_hours'] ?? 0);
                 
                 // Calculate expected_end_datetime
@@ -234,6 +221,7 @@ class ScheduleCascadeService
                         $row->end_datetime = $endDatetime;
                         $row->loading_hours = $loadingHours;
                         $row->machine_stop_hours = $machineStopHours;
+                        $row->stop_remarks = $rowData['stop_remarks'] ?? null;
                         $row->save();
                         $savedRows[] = $row;
                     }
@@ -246,27 +234,18 @@ class ScheduleCascadeService
                         'end_datetime' => $endDatetime,
                         'loading_hours' => $loadingHours,
                         'machine_stop_hours' => $machineStopHours,
+                        'stop_remarks' => $rowData['stop_remarks'] ?? null,
                     ]);
                     $savedRows[] = $row;
                 }
             }
-
-            DB::commit();
 
             return [
                 'success' => true,
                 'saved_rows' => $savedRows,
                 'message' => "Successfully saved " . count($savedRows) . " rows to table {$tableName}"
             ];
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error("Error saving rows to table {$tableName}: " . $e->getMessage());
-            return [
-                'success' => false,
-                'message' => 'Error saving rows: ' . $e->getMessage()
-            ];
-        }
+        });
     }
 
     /**

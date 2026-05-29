@@ -1,161 +1,10 @@
-@extends('layouts.app')
 
-@section('title', 'Schedule Generator')
-
-@section('content')
-<h2 class="text-center" style="color: blue; font-weight: bold;">
-    Schedule for {{ $machine->name }} → {{ $section->name }}
-</h2>
-@php
-    // Extract machine number from machine name (e.g., "M-3" -> 3)
-    preg_match('/M-?(\d+)/', $machine->name, $matches);
-    $machineNumber = isset($matches[1]) ? (int) $matches[1] : null;
-    // Convert section name format: A-OUT -> AOUT
-    $sectionCode = str_replace('-', '', strtoupper($section->name));
-    $tableName = $machineNumber ? "M{$machineNumber}_{$sectionCode}" : 'N/A';
-@endphp
-<div style="background-color: #e3f2fd; padding: 10px; border-radius: 4px; margin-bottom: 20px; text-align: center;">
-    <strong>Data will be saved to table:</strong> 
-    <code style="background-color: #fff; padding: 4px 8px; border-radius: 3px; font-size: 16px;">
-        {{ $tableName }}
-    </code>
-    <span style="color: #666; font-size: 14px; margin-left: 10px;">
-        (All schedule data for this machine-section is stored in this table only)
-    </span>
-</div>
-    <div class="row">
-        <!-- LEFT SIDE -->
-        <div class="col-md-6">
-            <div class="form-group mb-3">
-                <label>Date:</label>
-                <input type="date" id="date" class="form-control" value="{{ now()->format('Y-m-d') }}" required>
-            </div>
-            <div class="form-group mb-3">
-                <label for="startHour">Start Hour (0–23):</label>
-                    <select id="startHour" class="form-control" required>
-                    @for($i = 0; $i < 24; $i++)
-                        <option value="{{ $i }}" {{ $i == 8 ? 'selected' : '' }}>
-                            {{ str_pad($i, 2, '0', STR_PAD_LEFT) }}
-                        </option>
-                    @endfor
-                </select>
-            </div>
-        </div>
-        <!-- RIGHT SIDE -->
-        <div class="col-md-6">
-
-            <div class="form-group mb-3">
-                <label>Total Loading Time (hrs):</label>
-                <input type="number" id="loadingTime" step="0.1" min="0.1" value="12.0"
-                    placeholder="Enter total loading time across shifts"
-                class="form-control" oninput="try{renderScheduleTable();}catch(e){console.warn('Table not ready:',e);}" required>
-            </div>
-
-
-
-        </div>
-    </div>
-
-    <!-- BUTTONS FULL WIDTH -->
-    <div class="form-group mt-3 text-center">
-        <button id="generateBtn" class="btn btn-success me-2" onclick="generateSchedule()">
-                Generate (Default: 3 cycles)
-        </button>
-
-        <button id="saveBtn" class="btn btn-primary">
-            Save Challans
-        </button>
-    </div>
-
-    <div id="scheduleTable" style="overflow-x: auto; max-height: 600px; overflow-y: auto; margin-top: 20px;"></div>
-
-    <div id="stopTimeModal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 1050; padding: 24px; overflow-y: auto;">
-        <div style="max-width: 520px; margin: 40px auto; background: #fff; border-radius: 8px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18); overflow: hidden;">
-            <div style="padding: 16px 20px; border-bottom: 1px solid #e5e5e5; display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <h4 style="margin: 0; font-size: 18px;">Machine Stop Time</h4>
-                    <div id="stopTimeModalRowLabel" style="font-size: 13px; color: #666; margin-top: 4px;"></div>
-                </div>
-                <button type="button" onclick="closeStopTimeModal()" style="border: 0; background: transparent; font-size: 24px; line-height: 1; color: #666;">&times;</button>
-            </div>
-            <div style="padding: 20px;">
-                <div class="mb-3">
-                    <label class="form-label" style="font-weight: 600;">Start (24-hour)</label>
-                    <div style="display: grid; grid-template-columns: 1fr 160px; gap: 10px;">
-                        <input type="date" id="stopStartDate" class="form-control" onchange="updateStopDurationPreview()">
-                        <input type="text" id="stopStartTime" class="form-control" onchange="updateStopDurationPreview()">
-                    </div>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label" style="font-weight: 600;">End (24-hour)</label>
-                    <div style="display: grid; grid-template-columns: 1fr 160px; gap: 10px;">
-                        <input type="date" id="stopEndDate" class="form-control" onchange="updateStopDurationPreview()">
-                        <input type="text" id="stopEndTime" class="form-control" onchange="updateStopDurationPreview()">
-                    </div>
-                </div>
-                <div class="mb-3">
-                    <label for="stopRemarks" class="form-label" style="font-weight: 600;">Remark</label>
-                    <textarea id="stopRemarks" class="form-control" rows="3" maxlength="1000" placeholder="Add remark for this stop"></textarea>
-                </div>
-                <div style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px; padding: 12px 14px; font-size: 14px;">
-                    <strong>Calculated Stop Duration:</strong>
-                    <span id="stopDurationPreview">0 hours</span>
-                </div>
-            </div>
-            <div style="padding: 16px 20px; border-top: 1px solid #e5e5e5; display: flex; justify-content: flex-end; gap: 10px;">
-                <button type="button" class="btn btn-secondary" onclick="closeStopTimeModal()">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="saveStopTimeModal()">Save</button>
-            </div>
-        </div>
-    </div>
-
-
-@endsection
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-
-@push('scripts')
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-<script>
-flatpickr("#stopStartTime", {
-    enableTime: true,
-    noCalendar: true,
-    dateFormat: "H:i",
-    time_24hr: true,
-    minuteIncrement: 1,
-    allowInput: true
-});
-
-flatpickr("#stopEndTime", {
-    enableTime: true,
-    noCalendar: true,
-    dateFormat: "H:i",
-    time_24hr: true,
-    minuteIncrement: 1,
-    allowInput: true
-});
-</script>
-<script>
     window.machineId = {{ $machine->id ?? 'null' }};
     window.sectionName = '{{ addslashes($section->name ?? '') }}';
     window.sectionId = {{ $section->id ?? 'null' }};
 </script>
 <script>
-        const machineId = window.machineId ?? null;
-        const sectionName = window.sectionName ?? '';
-        let sectionId = window.sectionId ?? null;
-
-        let scheduleRows = window.scheduleRows ?? [];
-        let generatedChallans = window.generatedChallans ?? [];
-        let rowToRecordMap = window.rowToRecordMap instanceof Map ? window.rowToRecordMap : new Map();
-        let currentDateTime = window.currentDateTime ?? null;
-        let activeStopModalRowIndex = window.activeStopModalRowIndex ?? null;
-
-        window.scheduleRows = scheduleRows;
-        window.generatedChallans = generatedChallans;
-        window.rowToRecordMap = rowToRecordMap;
-        window.currentDateTime = currentDateTime;
-        window.activeStopModalRowIndex = activeStopModalRowIndex;
-
+    
         window.addEventListener('click', function(event) {
             const modal = document.getElementById('stopTimeModal');
             if (modal && event.target === modal) {
@@ -166,7 +15,6 @@ flatpickr("#stopEndTime", {
         // AUTO-GENERATION LOGIC - NEW
         let autoGenInterval = null;
         let autoGenStatusEl = null;
-        let autoGenInProgress = false;
 
         /**
          * Get today minus 1 day (UTC date only)
@@ -179,18 +27,16 @@ flatpickr("#stopEndTime", {
         }
 
         /**
-         * Check if should auto-generate more cycles
-         * Triggers when the schedule has reached real time:
-         * - If now >= last row end_datetime, append 3 more cycles.
+         * Check if should auto-generate 20 new rows
+         * Triggers when last row's end_datetime date == today-1
          */
         function shouldAutoGenerate() {
-            if (!scheduleGenerated || scheduleRows.length === 0 || autoGenInProgress) return false;
+            if (scheduleRows.length === 0) return false;
             const lastRow = scheduleRows[scheduleRows.length - 1];
-            const lastEnd = new Date(lastRow.end_datetime);
-            const now = new Date();
-
-            // If the schedule ends at/before now, generate more
-            return now.getTime() >= lastEnd.getTime();
+            const lastEndDate = new Date(lastRow.end_datetime);
+            lastEndDate.setUTCHours(0, 0, 0, 0); // Date only
+            const todayMinusOne = getTodayMinusOne();
+            return lastEndDate.getTime() === todayMinusOne.getTime();
         }
 
         /**
@@ -202,55 +48,49 @@ flatpickr("#stopEndTime", {
             
             const lastRow = scheduleRows[scheduleRows.length - 1];
             const loadingTimeEl = document.getElementById('loadingTime');
-            const perRowLoadingTime = Math.min(parseFloat(loadingTimeEl?.value) || 12, 12);
-            autoGenInProgress = true;
-            const totalLoadingTime = perRowLoadingTime;
-
-            try {
-                console.log(`🕐 Schedule reached real time. Auto-generating 3 cycles (21 rows) with ${totalLoadingTime}h loading...`);
-
-                let currentDatetime = new Date(lastRow.end_datetime);
-
-                for (let i = 0; i < 21; i++) {  // 3 cycles x 7 rows
-                    const machineStopHours = 0; // Default 0
-
-                    // Same shift logic as generateSchedule
-                    const shiftWindow = getShiftWindow(currentDatetime);
-                    const remainingInShift = getRemainingShiftHours(currentDatetime, shiftWindow.shiftEnd);
-                    const loadingHours = Math.min(perRowLoadingTime, remainingInShift, 12);
-
-                    const expectedEndDatetime = new Date(currentDatetime.getTime() + loadingHours * 3600000);
-                    const endDatetime = new Date(expectedEndDatetime.getTime() + machineStopHours * 3600000);
-
-                    scheduleRows.push({
-                        dateKey: currentDatetime.toISOString().split('T')[0],
-                        start_datetime: currentDatetime.toISOString(),
-                        expected_end: expectedEndDatetime.toISOString(),
-                        end_datetime: endDatetime.toISOString(),
-                        loading_hours: loadingHours > 0 ? loadingHours : null,
-                        stop_hours: machineStopHours,
-                        challan_index: null, // New rows
-                        cycle_number: '?',
-                        stop_start_datetime: null,
-                        stop_end_datetime: null,
-                        stop_remarks: ''
-                    });
-
-                    currentDatetime = new Date(endDatetime);
-                }
-
-                // Re-render and persist (no alerts)
-                renderScheduleTable();
-                updateAutoGenStatus('Auto-generated 3 more cycles');
-
-                if (typeof saveChallans === 'function') {
-                    try { await saveChallans(false); } catch (e) { console.warn('Auto-save failed:', e); }
-                }
-
-                console.log(`✅ Auto-generated 3 cycles (21 rows). Total: ${scheduleRows.length}`);
-            } finally {
-                autoGenInProgress = false;
+            const totalLoadingTime = parseFloat(loadingTimeEl?.value) || 12; // Default shift
+            
+            console.log(`🕐 Last end date matches today-1. Auto-generating 3 cycles (21 rows) with ${totalLoadingTime}h loading...`);
+            
+            let currentDatetime = new Date(lastRow.end_datetime);
+            let remainingLoadingTime = totalLoadingTime * 20; // Enough for 20 shifts
+            const startRowNo = scheduleRows.length + 1;
+            
+            for (let i = 0; i < 21; i++) {  // 3 cycles x 7 rows
+                const rowNo = startRowNo + i;
+                const machineStopHours = 0; // Default 0
+                
+                // Same shift logic as generateSchedule
+                const shiftWindow = getShiftWindow(currentDatetime);
+                const remainingInShift = getRemainingShiftHours(currentDatetime, shiftWindow.shiftEnd);
+                const loadingHours = Math.min(remainingLoadingTime, remainingInShift, 12);
+                
+                const expectedEndDatetime = new Date(currentDatetime.getTime() + loadingHours * 3600000);
+                const endDatetime = new Date(expectedEndDatetime.getTime() + machineStopHours * 3600000);
+                
+                scheduleRows.push({
+                    dateKey: currentDatetime.toISOString().split('T')[0],
+                    start_datetime: currentDatetime.toISOString(),
+                    expected_end: expectedEndDatetime.toISOString(),
+                    end_datetime: endDatetime.toISOString(),
+                    loading_hours: loadingHours > 0 ? loadingHours : null,
+                    stop_hours: machineStopHours,
+                    challan_index: null, // New rows
+                    cycle_number: '?',
+                    stop_start_datetime: null,
+                    stop_end_datetime: null,
+                    stop_remarks: ''
+                });
+                
+                remainingLoadingTime -= loadingHours;
+                currentDatetime = new Date(shiftWindow.shiftEnd);
             }
+            
+            // Auto-save silently
+            await saveChallans(false);
+            renderScheduleTable();
+            updateAutoGenStatus('Generated 3 cycles (21 rows)');
+            console.log(`✅ Auto-generated 3 cycles (21 rows). Total: ${scheduleRows.length}`);
         }
 
         /**
@@ -345,14 +185,6 @@ flatpickr("#stopEndTime", {
             return (hour >= 8 && hour < 20) ? 'Day' : 'Night';
         }
 
-        function getShiftDateKey(date) {
-            return date.toISOString().split('T')[0];
-        }
-
-        function getShiftDate(date) {
-            return formatDateOnly(date);
-        }
-
 
 
         function getShiftWindow(date) {
@@ -388,53 +220,23 @@ flatpickr("#stopEndTime", {
         // CRITICAL: Use UTC methods to avoid timezone conversion issues
         // Dates from database are in UTC, display them in UTC to match database
         function formatDateTime(date) {
-            // Production day runs 08:00 -> next day 08:00 (do not flip display at 00:00)
-            // Keep ORIGINAL clock time, but label DATE using production business date (08:00 cutoff)
-            const businessDate = new Date(date);
-            businessDate.setUTCHours(0, 0, 0, 0);
-            if (date.getUTCHours() < 8) {
-                businessDate.setUTCDate(businessDate.getUTCDate() - 1);
-            }
-
             // Use UTC methods to get date components (prevents timezone conversion)
-            const year = businessDate.getUTCFullYear();
+            const year = date.getUTCFullYear();
             const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            const month = monthNames[businessDate.getUTCMonth()];
-            const day = String(businessDate.getUTCDate()).padStart(2, '0');
+            const month = monthNames[date.getUTCMonth()];
+            const day = String(date.getUTCDate()).padStart(2, '0');
             const hours = String(date.getUTCHours()).padStart(2, '0');
             const minutes = String(date.getUTCMinutes()).padStart(2, '0');
             return `${month} ${day}, ${year}, ${hours}:${minutes}`;
         }
 
-        /**
-         * Production-day formatter (08:00 -> next day 08:00).
-         * This is the REQUIRED display logic:
-         * - Do NOT flip display date at 00:00
-         * - Flip display date only after 08:00 completes
-         */
-        function formatProductionDateTime(date) {
-            return formatDateTime(date);
-        }
-
-        function formatTime(date) {
-            const hours = String(date.getUTCHours()).padStart(2, '0');
-            const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-            return `${hours}:${minutes}`;
-        }
-
         // Helper function to format date only (without time)
         // Use UTC methods to avoid timezone conversion
         function formatDateOnly(date) {
-            const businessDate = new Date(date);
-            businessDate.setUTCHours(0, 0, 0, 0);
-            if (date.getUTCHours() < 8) {
-                businessDate.setUTCDate(businessDate.getUTCDate() - 1);
-            }
-
-            const year = businessDate.getUTCFullYear();
+            const year = date.getUTCFullYear();
             const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            const month = monthNames[businessDate.getUTCMonth()];
-            const day = String(businessDate.getUTCDate()).padStart(2, '0');
+            const month = monthNames[date.getUTCMonth()];
+            const day = String(date.getUTCDate()).padStart(2, '0');
             return `${month} ${day}, ${year}`;
         }
 
@@ -466,8 +268,8 @@ flatpickr("#stopEndTime", {
                     let html = '<h3>Existing Challans</h3><table><tr><th>Start Time</th><th>End Time</th><th>Loading Duration (hrs)</th><th>Actions</th></tr>';
                     
                     data.forEach(challan => {
-                        const startTime = formatDateTime(new Date(challan.start_time));
-                        const endTime = formatDateTime(new Date(challan.end_time));
+                        const startTime = new Date(challan.start_time).toLocaleString();
+                        const endTime = new Date(challan.end_time).toLocaleString();
                         html += `
                             <tr>
                                 <td>${startTime}</td>
@@ -538,7 +340,6 @@ flatpickr("#stopEndTime", {
                             stop_hours: record.machine_stop_time || 0,
                             challan_index: null,
                             record_id: record.id,
-                            is_cycle_complete: !!record.is_cycle_complete,
                             stop_start_datetime: record.stop_start_datetime || null,
                             stop_end_datetime: record.stop_end_datetime || null,
                             stop_remarks: record.stop_remarks || ''
@@ -568,8 +369,7 @@ flatpickr("#stopEndTime", {
                 } else {
                     console.log('📭 No existing records - will auto-generate 3 default cycles (21 rows)');
                     // AUTO-GENERATE DEFAULT SCHEDULE (Step 3)
-                    scheduleRows = [];
-                    scheduleGenerated = false;
+                    generateSchedule();
                 }
                     
                     if (data.length > 0) {
@@ -582,12 +382,12 @@ flatpickr("#stopEndTime", {
                     if (scheduleRows.length > 0) {
                         startAutoGenMonitor();
                     }
+                }
             } catch (error) {
                 console.error('Error loading existing schedule:', error);
                 console.log('📭 Table empty or error - auto-generating default schedule...');
                 // Auto-generate even on error (fallback)
-                scheduleRows = [];
-                scheduleGenerated = false;
+                generateSchedule();
             }
         }
 
@@ -799,9 +599,22 @@ flatpickr("#stopEndTime", {
                 return;
             }
             
-            const dateStr = dateEl.value;
-            const startHour = parseInt(startHourEl.value);
-            const totalLoadingTime = Math.min(parseFloat(loadingTimeEl.value) || 0, 12);
+            let dateStr = dateEl.value;
+            let startHour = parseInt(startHourEl.value);
+            const totalLoadingTime = parseFloat(loadingTimeEl.value) || 0;
+            
+            // CONTINUOUS MODE: If schedule exists, continue from last end datetime
+            // This allows multiple cycles without gaps
+            if (scheduleRows && scheduleRows.length > 0) {
+                const lastRow = scheduleRows[scheduleRows.length - 1];
+                if (lastRow && lastRow.end_datetime) {
+                    const lastEndTime = new Date(lastRow.end_datetime);
+                    // Update form to show continuation start
+                    dateStr = lastEndTime.toISOString().split('T')[0];
+                    startHour = lastEndTime.getUTCHours();
+                    console.log(`Continuing from previous end: ${dateStr} ${startHour}:00`);
+                }
+            }
             
             if (!dateStr || totalLoadingTime <= 0) {
                 alert("Please fill Date and Total Loading Time (>0).");
@@ -811,6 +624,7 @@ flatpickr("#stopEndTime", {
             // Calculate final completion datetime
             // Example: 27 Apr 2026 08:00 + 84 hours = 30 Apr 2026 12:00
             const startDateTime = new Date(`${dateStr}T${String(startHour).padStart(2, '0')}:00:00Z`);
+            let remainingLoadingTime = totalLoadingTime;
             generatedChallans = [];
             scheduleRows = [];
             let currentTime = new Date(startDateTime);
@@ -834,19 +648,27 @@ flatpickr("#stopEndTime", {
             let generatedRows = 0;
             const MAX_ROWS = 21; // 3 cycles x 7 rows/cycle
 
-            while (generatedRows < MAX_ROWS) {
+            while (generatedRows < MAX_ROWS && remainingLoadingTime > 0) {
+                // Safety check: prevent infinite loop
+                if (generatedRows > MAX_ROWS) {
+                    console.error('Safety: stopping after max rows');
+                    break;
+                }
+
                 // Get shift window (Day: 08:00-20:00, Night: 20:00-08:00)
                 const { shiftType, shiftEnd } = getShiftWindow(currentTime);
                 const remainingInShift = getRemainingShiftHours(currentTime, shiftEnd);
                 
-                const loadingHours = Math.min(totalLoadingTime, remainingInShift, 12);
+                // Calculate loading hours for this shift: min(remaining, remaining in shift, 12)
+                // This handles partial last shift correctly (e.g., 4 hours for final partial shift)
+                const loadingHours = Math.min(remainingLoadingTime, remainingInShift, 12);
                 
                 // Expected end = Start + Loading (NOT affected by stop time)
                 const expectedEndShift = addHours(currentTime, loadingHours);
                 // End = Expected + Stop (0 for now)
                 const endShift = new Date(expectedEndShift);
                 
-                const isCycleComplete = ((generatedRows + 1) % 7) === 0;
+                const isCycleComplete = false; // Define missing var
                 const challan = {
                     start_time: currentTime.toISOString(),
                     end_time: endShift.toISOString(),
@@ -861,13 +683,11 @@ flatpickr("#stopEndTime", {
                 };
                 generatedChallans.push(challan);
                 
+                // Decrement remaining (NOT reset - continuous until exhausted)
+                remainingLoadingTime -= loadingHours;
                 // Next row starts from this row's end datetime
                 currentTime = new Date(endShift);
-                if (isCycleComplete) {
-                    cycleNumber++;
-                }
                 rowIndex++;
-                generatedRows++;
             }
             
             // Build scheduleRows array
@@ -902,6 +722,9 @@ flatpickr("#stopEndTime", {
                 console.log(`Schedule generated: ${scheduleRows.length} shift rows`);
                 console.log(`Final completion: ${formatDateTime(parseDate(lastRow.end_datetime))}`);
             }
+            
+            // Auto-save silently so database records are created for editing
+            saveChallans(false).catch(err => console.error("Auto-save failed", err));
         }
 
         function updateCycleNumbers() {
@@ -986,16 +809,21 @@ flatpickr("#stopEndTime", {
                 // For continuation days, this ensures Jan 22, Jan 23, etc. are shown even if start_datetime spans dates
                 // FIXED: Use start_datetime date for BOTH shifts (01/04 for day & night)
                 const startDateTime = parseDate(row.start_datetime);
-                // Display must follow production-day date labeling (08:00 cutoff)
-                const displayStartTime = formatProductionDateTime(startDateTime);
+                const shiftDateKey = getShiftDateKey(startDateTime);
+                const shiftDate = getShiftDate(startDateTime);  // "Jan 04, 2026"
+                const startTimeStr = formatTime(startDateTime);  // "20:00"
+                let displayStartTime = `${shiftDate}, ${startTimeStr}`;
                 
                 // Expected End Date and Time (moved below - now using formatDateTime for timeline-based display)
                 
+                // End Date and Time: Use ACTUAL timeline date, NOT shift display date
+                // The end time should show the real calendar date (timeline-based), not the "shift display" date
                 const endDateTime = parseDate(row.end_datetime);
-                const endStr = formatProductionDateTime(endDateTime);
+                const endStr = formatDateTime(endDateTime);
                 
+                // Expected End Date and Time: Also use ACTUAL timeline for consistency
                 const expectedEndDateTime = parseDate(row.expected_end);
-                const expectedEndStr = formatProductionDateTime(expectedEndDateTime);
+                const expectedEndStr = formatDateTime(expectedEndDateTime);
                 
                 
                 // Determine if this row has loading hours (not empty or null)
@@ -1010,7 +838,7 @@ flatpickr("#stopEndTime", {
                 
                 tableHTML += `
                     <tr data-row-index="${rowIndex}" data-date-key="${row.dateKey}" style="${rowStyle}">
-                    <td class="start-datetime-cell" style="padding: 8px; border: 1px solid #ccc; text-align: center; white-space: nowrap; font-weight: ${hasLoading ? 'bold' : 'normal'};">
+<td class="start-datetime-cell" style="padding: 8px; border: 1px solid #ccc; text-align: center; white-space: nowrap; font-weight: ${hasLoading ? 'bold' : 'normal'};">
                             ${displayStartTime}
                         </td>
                         <td style="padding: 8px; border: 1px solid #ccc; text-align: center;">
@@ -1025,7 +853,7 @@ flatpickr("#stopEndTime", {
                         <td class="loading-hours-cell" style="padding: 8px; border: 1px solid #ccc; text-align: center;">
                             ${loadingDisplay}
                         </td>
-                        <td style="padding: 8px; border: 1px solid #ccc; text-align: center;">
+    <td style="padding: 8px; border: 1px solid #ccc; text-align: center;">
                         <input type="text" 
                                class="machine-stop-time-input" 
                                data-row-index="${rowIndex}"
@@ -1061,7 +889,7 @@ flatpickr("#stopEndTime", {
     }
 
 
-    async function saveChallans(showAlert = true) {
+async function saveChallans(showAlert = true) {
         if (scheduleRows.length === 0) {
             showScheduleWarning('No schedule rows to save. Please generate schedule first.');
             return;
@@ -1120,7 +948,6 @@ flatpickr("#stopEndTime", {
             record_id: rowToRecordMap.get(index) || null,
             stop_start_datetime: row.stop_start_datetime || null,
             stop_end_datetime: row.stop_end_datetime || null,
-            is_cycle_complete: row.is_cycle_complete || false,
             stop_remarks: row.stop_remarks || ''
         }));
 
@@ -1166,7 +993,6 @@ flatpickr("#stopEndTime", {
                                 const row = scheduleRows[targetRowIndex];
                                 rowToRecordMap.set(targetRowIndex, recordId);
                                 row.record_id = recordId;
-                                row.is_cycle_complete = !!record.is_cycle_complete;
                                 matched = true;
                                 console.log(`Mapped row ${targetRowIndex} (row_no=${recordRowNo}) to record ID ${recordId}`);
                             }
@@ -1177,7 +1003,6 @@ flatpickr("#stopEndTime", {
                             const row = scheduleRows[recordIndex];
                             rowToRecordMap.set(recordIndex, recordId);
                             row.record_id = recordId;
-                            row.is_cycle_complete = !!record.is_cycle_complete;
                             console.log(`Mapped row ${recordIndex} (by position) to record ID ${recordId}`);
                         }
                     });
@@ -1288,35 +1113,20 @@ flatpickr("#stopEndTime", {
         return `${year}-${month}-${day}T${hours}:${minutes}`;
     }
 
-    function toDateOnlyValue(date) {
-        const year = date.getUTCFullYear();
-        const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-        const day = String(date.getUTCDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    }
-
-    function toTimeOnlyValue(date) {
-        const hours = String(date.getUTCHours()).padStart(2, '0');
-        const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-        return `${hours}:${minutes}`;
-    }
-
-    function parseDateAndTimeAsUtc(dateValue, timeValue) {
-        if (!dateValue || !timeValue) return null;
-        const [year, month, day] = dateValue.split('-').map(Number);
-        const [hours, minutes] = timeValue.split(':').map(Number);
-        if (!year || !month || !day) return null;
-        return new Date(Date.UTC(year, (month - 1), day, hours || 0, minutes || 0, 0, 0));
+    function parseDateTimeLocalAsUtc(value) {
+        if (!value || !value.includes('T')) return null;
+        const [datePart, timePart] = value.split('T');
+        const [year, month, day] = datePart.split('-').map(Number);
+        const [hours, minutes] = timePart.split(':').map(Number);
+        return new Date(Date.UTC(year, month - 1, day, hours || 0, minutes || 0, 0, 0));
     }
 
     function updateStopDurationPreview() {
         const preview = document.getElementById('stopDurationPreview');
-        const startDateValue = document.getElementById('stopStartDate')?.value;
-        const startTimeValue = document.getElementById('stopStartTime')?.value;
-        const endDateValue = document.getElementById('stopEndDate')?.value;
-        const endTimeValue = document.getElementById('stopEndTime')?.value;
-        const startDate = parseDateAndTimeAsUtc(startDateValue, startTimeValue);
-        const endDate = parseDateAndTimeAsUtc(endDateValue, endTimeValue);
+        const startValue = document.getElementById('stopStartDateTime').value;
+        const endValue = document.getElementById('stopEndDateTime').value;
+        const startDate = parseDateTimeLocalAsUtc(startValue);
+        const endDate = parseDateTimeLocalAsUtc(endValue);
 
         if (!preview) return;
         if (!startDate || !endDate) {
@@ -1350,24 +1160,20 @@ flatpickr("#stopEndTime", {
         const row = scheduleRows[rowIndex];
         const modal = document.getElementById('stopTimeModal');
         const rowLabel = document.getElementById('stopTimeModalRowLabel');
-        const startDateInput = document.getElementById('stopStartDate');
-        const startTimeInput = document.getElementById('stopStartTime');
-        const endDateInput = document.getElementById('stopEndDate');
-        const endTimeInput = document.getElementById('stopEndTime');
+        const startInput = document.getElementById('stopStartDateTime');
+        const endInput = document.getElementById('stopEndDateTime');
         const remarksInput = document.getElementById('stopRemarks');
 
         const defaultStart = row.stop_start_datetime
             ? parseDate(row.stop_start_datetime)
-            : parseDate(row.start_datetime);
+            : parseDate(row.expected_end || row.start_datetime);
         const defaultEnd = row.stop_end_datetime
             ? parseDate(row.stop_end_datetime)
             : addHours(defaultStart, parseFloat(row.stop_hours) || 0);
 
         rowLabel.textContent = `Row ${rowIndex + 1} | ${getShiftTypeName(parseDate(row.start_datetime))} Shift`;
-        if (startDateInput) startDateInput.value = toDateOnlyValue(defaultStart);
-        if (startTimeInput) startTimeInput.value = toTimeOnlyValue(defaultStart);
-        if (endDateInput) endDateInput.value = toDateOnlyValue(defaultEnd);
-        if (endTimeInput) endTimeInput.value = toTimeOnlyValue(defaultEnd);
+        startInput.value = toDateTimeLocalValue(defaultStart);
+        endInput.value = toDateTimeLocalValue(defaultEnd);
         remarksInput.value = row.stop_remarks || '';
         updateStopDurationPreview();
 
@@ -1424,7 +1230,7 @@ flatpickr("#stopEndTime", {
     }
 
     // Global flag for schedule generation state - declared earlier in file
-let scheduleGenerated = false;
+let scheduleGenerated = true; // ✅ FIXED: Editing enabled by default
 
 function setScheduleGenerated() {
         scheduleGenerated = true;
@@ -1537,14 +1343,12 @@ function setScheduleGenerated() {
             return;
         }
 
-        const startDateInput = document.getElementById('stopStartDate');
-        const startTimeInput = document.getElementById('stopStartTime');
-        const endDateInput = document.getElementById('stopEndDate');
-        const endTimeInput = document.getElementById('stopEndTime');
+        const startInput = document.getElementById('stopStartDateTime');
+        const endInput = document.getElementById('stopEndDateTime');
         const remarksInput = document.getElementById('stopRemarks');
 
-        const stopStart = parseDateAndTimeAsUtc(startDateInput?.value, startTimeInput?.value);
-        const stopEnd = parseDateAndTimeAsUtc(endDateInput?.value, endTimeInput?.value);
+        const stopStart = parseDateTimeLocalAsUtc(startInput.value);
+        const stopEnd = parseDateTimeLocalAsUtc(endInput.value);
 
         if (!stopStart || !stopEnd) {
             alert('Please select both Start Date & Time and End Date & Time.');
@@ -1584,15 +1388,8 @@ function setScheduleGenerated() {
                 row.stop_start_datetime = stopStart.toISOString();
                 row.stop_end_datetime = stopEnd.toISOString();
                 row.stop_remarks = remarksInput.value.trim();
-
-                // Sync UI with backend cascade results (source of truth)
-                if (Array.isArray(response.updated_rows) && response.updated_rows.length > 0) {
-                    applyStopTimeCascadeUpdates(response.updated_rows);
-                } else {
-                    // Fallback: local cascade recalculation
-                    recalculateScheduleFromRow(rowIndex);
-                }
-
+                
+                recalculateScheduleFromRow(rowIndex);
                 closeStopTimeModal();
                 
                 if (indicator) {
@@ -1614,48 +1411,6 @@ function setScheduleGenerated() {
             alert(`Error: ${error.message}`);
         }
     }   
-
-    /**
-     * Apply backend cascade updates to scheduleRows (1:1 UI mapping).
-     * Backend returns rows ordered by row_no (>= edited row).
-     */
-    function applyStopTimeCascadeUpdates(updatedRows) {
-        // Build quick lookup by id and row_no
-        const byId = new Map();
-        const byRowNo = new Map();
-        updatedRows.forEach(r => {
-            if (r?.id != null) byId.set(String(r.id), r);
-            if (r?.row_no != null) byRowNo.set(Number(r.row_no), r);
-        });
-
-        scheduleRows.forEach((uiRow, idx) => {
-            const recordId = uiRow.record_id || rowToRecordMap.get(idx);
-            const rowNo = idx + 1; // UI row index is 0-based, DB row_no is 1-based
-            const match =
-                (recordId != null && byId.has(String(recordId)) && byId.get(String(recordId))) ||
-                (byRowNo.has(rowNo) && byRowNo.get(rowNo)) ||
-                null;
-
-            if (!match) return;
-
-            if (match.start_time) uiRow.start_datetime = match.start_time;
-            if (match.end_time) uiRow.end_datetime = match.end_time;
-            if (match.expected_end_time) uiRow.expected_end = match.expected_end_time;
-            if (typeof match.machine_stop_time === 'number') uiRow.stop_hours = match.machine_stop_time;
-            if (match.stop_start_datetime) uiRow.stop_start_datetime = match.stop_start_datetime;
-            if (match.stop_end_datetime) uiRow.stop_end_datetime = match.stop_end_datetime;
-            if (typeof match.stop_remarks === 'string') uiRow.stop_remarks = match.stop_remarks;
-
-            // Keep record_id mapping stable
-            if (match.id != null) {
-                uiRow.record_id = match.id;
-                rowToRecordMap.set(idx, match.id);
-            }
-        });
-
-        // Ensure derived fields (shift info/dateKey) stay consistent with updated datetimes
-        recalculateScheduleFromRow(0);
-    }
     
     /**
      * Save ALL rows after stop time update to maintain 1:1 sync
@@ -2347,209 +2102,3 @@ function setScheduleGenerated() {
             console.error('Edit challan error:', error);
         }
     }
-
-    function buildCycleRows(startDateTime, cycleLoadingTime, cycleCount, startingCycleNumber = 1) {
-        const rows = [];
-        let currentTime = new Date(startDateTime);
-
-        for (let cycleNumber = startingCycleNumber; cycleNumber < startingCycleNumber + cycleCount; cycleNumber++) {
-            let remainingCycleLoading = cycleLoadingTime;
-
-            while (remainingCycleLoading > 0.0001) {
-                const { shiftType, shiftEnd } = getShiftWindow(currentTime);
-                const remainingInShift = getRemainingShiftHours(currentTime, shiftEnd);
-                const loadingHours = Math.min(remainingCycleLoading, remainingInShift, 12);
-                const expectedEnd = addHours(currentTime, loadingHours);
-                const isCycleComplete = remainingCycleLoading - loadingHours <= 0.0001;
-
-                rows.push({
-                    dateKey: currentTime.toISOString().split('T')[0],
-                    start_datetime: currentTime.toISOString(),
-                    end_datetime: expectedEnd.toISOString(),
-                    expected_end: expectedEnd.toISOString(),
-                    loading_hours: loadingHours,
-                    stop_hours: 0,
-                    challan_index: null,
-                    shift_type_name: shiftType,
-                    shift_end_datetime: shiftEnd.toISOString(),
-                    cycle_number: cycleNumber,
-                    is_cycle_complete: isCycleComplete,
-                    stop_start_datetime: null,
-                    stop_end_datetime: null,
-                    stop_remarks: ''
-                });
-
-                remainingCycleLoading -= loadingHours;
-                currentTime = new Date(expectedEnd);
-            }
-        }
-
-        return rows;
-    }
-
-    function getScheduleStorageKey() {
-        return `schedule_cycle_loading:${machineId}:${sectionName}`;
-    }
-
-    async function generateSchedule() {
-        const dateEl = document.getElementById('date');
-        const startHourEl = document.getElementById('startHour');
-        const loadingTimeEl = document.getElementById('loadingTime');
-
-        if (!dateEl || !startHourEl || !loadingTimeEl) {
-            alert('Form not ready. Please refresh the page.');
-            return;
-        }
-
-        const dateStr = dateEl.value;
-        const startHour = parseInt(startHourEl.value, 10);
-        const cycleLoadingTime = parseFloat(loadingTimeEl.value) || 0;
-
-        if (!dateStr || Number.isNaN(startHour) || cycleLoadingTime <= 0) {
-            alert('Please fill Date, Start Hour, and Total Loading Time (> 0).');
-            return;
-        }
-
-        const startDateTime = new Date(`${dateStr}T${String(startHour).padStart(2, '0')}:00:00Z`);
-        scheduleRows = buildCycleRows(startDateTime, cycleLoadingTime, 3, 1);
-        generatedChallans = [];
-        rowToRecordMap.clear();
-
-        try {
-            localStorage.setItem(getScheduleStorageKey(), String(cycleLoadingTime));
-        } catch (error) {
-            console.warn('Could not persist cycle loading time', error);
-        }
-
-        setScheduleGenerated();
-        renderScheduleTable();
-
-        const saveBtn = document.getElementById('saveBtn');
-        if (saveBtn) saveBtn.style.display = 'inline-block';
-
-        const lastRow = scheduleRows[scheduleRows.length - 1];
-        if (lastRow) {
-            console.log(`Generated 3 cycles from ${dateStr} ${String(startHour).padStart(2, '0')}:00`);
-            console.log(`Final completion: ${formatDateTime(parseDate(lastRow.end_datetime))}`);
-        }
-
-        await saveChallans(false);
-    }
-
-    async function generateNext3Cycles() {
-        if (!scheduleGenerated || scheduleRows.length === 0 || autoGenInProgress) return;
-
-        const loadingTimeEl = document.getElementById('loadingTime');
-        const cycleLoadingTime = parseFloat(loadingTimeEl?.value) || 0;
-        if (cycleLoadingTime <= 0) return;
-
-        autoGenInProgress = true;
-
-        try {
-            const lastRow = scheduleRows[scheduleRows.length - 1];
-            const nextStart = new Date(lastRow.end_datetime);
-            const nextCycleNumber = (parseInt(lastRow.cycle_number, 10) || 0) + 1;
-            const appendedRows = buildCycleRows(nextStart, cycleLoadingTime, 3, nextCycleNumber);
-
-            scheduleRows.push(...appendedRows);
-            renderScheduleTable();
-            updateAutoGenStatus('Auto-generated 3 more cycles');
-            await saveChallans(false);
-        } finally {
-            autoGenInProgress = false;
-        }
-    }
-
-    async function loadExistingSchedule() {
-        try {
-            const dateEl = document.getElementById('date');
-            const startHourEl = document.getElementById('startHour');
-            const loadingTimeEl = document.getElementById('loadingTime');
-            const saveBtn = document.getElementById('saveBtn');
-
-            if (!dateEl || !startHourEl || !loadingTimeEl) {
-                setTimeout(() => loadExistingSchedule(), 200);
-                return;
-            }
-
-            const data = await makeRequest(`/api/challans?machine_id=${machineId}&section_name=${encodeURIComponent(sectionName)}`);
-
-            if (!Array.isArray(data) || data.length === 0) {
-                scheduleRows = [];
-                generatedChallans = [];
-                rowToRecordMap.clear();
-                scheduleGenerated = false;
-                renderScheduleTable();
-                if (saveBtn) saveBtn.style.display = 'inline-block';
-                return;
-            }
-
-            const sortedRows = [...data].sort((a, b) => (a.row_no ?? 0) - (b.row_no ?? 0));
-            scheduleRows = [];
-            generatedChallans = [];
-            rowToRecordMap.clear();
-
-            sortedRows.forEach((record, index) => {
-                const startTime = new Date(record.start_time);
-                const endTime = new Date(record.end_time);
-                const expectedEnd = record.expected_end_time ? new Date(record.expected_end_time) : endTime;
-
-                scheduleRows.push({
-                    dateKey: startTime.toISOString().split('T')[0],
-                    start_datetime: startTime.toISOString(),
-                    end_datetime: endTime.toISOString(),
-                    expected_end: expectedEnd.toISOString(),
-                    loading_hours: record.loading_duration !== null ? parseFloat(record.loading_duration) : null,
-                    stop_hours: parseFloat(record.machine_stop_time || 0),
-                    challan_index: index,
-                    record_id: record.id,
-                    cycle_number: null,
-                    is_cycle_complete: false,
-                    stop_start_datetime: record.stop_start_datetime || null,
-                    stop_end_datetime: record.stop_end_datetime || null,
-                    stop_remarks: record.stop_remarks || ''
-                });
-
-                rowToRecordMap.set(index, record.id);
-            });
-
-            const firstRecord = sortedRows[0];
-            const firstStart = new Date(firstRecord.start_time);
-            dateEl.value = firstStart.toISOString().split('T')[0];
-            startHourEl.value = String(firstStart.getUTCHours()).padStart(2, '0');
-
-            let cycleLoadingTime = 0;
-            try {
-                cycleLoadingTime = parseFloat(localStorage.getItem(getScheduleStorageKey()) || '0') || 0;
-            } catch (error) {
-                cycleLoadingTime = 0;
-            }
-
-            if (cycleLoadingTime <= 0) {
-                for (const row of scheduleRows) {
-                    const rowLoading = parseFloat(row.loading_hours) || 0;
-                    cycleLoadingTime += rowLoading;
-                    if (rowLoading > 0 && rowLoading < 12) {
-                        break;
-                    }
-                }
-            }
-
-            if (cycleLoadingTime > 0) {
-                loadingTimeEl.value = String(cycleLoadingTime);
-            }
-
-            setScheduleGenerated();
-            renderScheduleTable();
-            if (saveBtn) saveBtn.style.display = 'inline-block';
-        } catch (error) {
-            console.error('Error loading existing schedule:', error);
-            scheduleRows = [];
-            generatedChallans = [];
-            rowToRecordMap.clear();
-            scheduleGenerated = false;
-            renderScheduleTable();
-        }
-    }
-</script>   
-@endpush

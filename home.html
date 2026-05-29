@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="UhKPQloDyVTAjJFy4FgtV4pIqIsbWaYRB97xKLfz">
+    <title>Select Machine &amp; Section</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f7fa;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1, h2 {
+            color: blue;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: background-color 0.3s;
+        }
+        .btn-primary {
+            background-color: rgb(29, 149, 228);
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: rgb(23, 123, 191);
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-success:hover {
+            background-color: #218838;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn-danger:hover {
+            background-color: #c82333;
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .alert {
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .alert-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 5px;
+        }
+        input[type="text"],
+        input[type="number"],
+        input[type="date"],
+        input[type="time"],
+        select {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 100%;
+            max-width: 300px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+        }
+        .section-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        .section-btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+            background-color: rgb(29, 149, 228);
+            color: white;
+            transition: all 0.3s;
+        }
+        .section-btn:hover {
+            background-color: rgb(23, 123, 191);
+        }
+        .section-btn.active {
+            background-color: #28a745;
+            font-weight: bold;
+        }
+    </style>
+    <script type="module" src="http://[::1]:5177/@vite/client"></script><link rel="stylesheet" href="http://[::1]:5177/resources/css/app.css" /><script type="module" src="http://[::1]:5177/resources/js/app.js"></script>
+
+</head>
+<body>
+    <div class="container">
+                        
+        <style>
+    body { background-color: #f4f7f9; font-family: sans-serif; }
+    .selection-container { text-align: center; padding-top: 50px; }
+    h1 { color: #0033ff; font-weight: bold; font-size: 32px; margin-bottom: 40px; }
+    
+    .machine-select-wrapper { 
+        margin-bottom: 40px; 
+        display: flex; 
+        justify-content: center; 
+        align-items: center; 
+        gap: 15px; 
+    }
+    .machine-select-wrapper label { font-size: 18px; font-weight: bold; }
+    .form-select-custom { padding: 8px 15px; border-radius: 5px; border: 1px solid #ccc; width: 150px; font-size: 16px; }
+
+    .section-buttons {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-wrap: wrap; 
+        gap: 15px;
+        margin: 40px auto;
+        max-width: 90%;
+    }
+
+    .section-btn {
+        background-color: #2196f3;
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: bold;
+        cursor: pointer;
+        min-width: 100px;
+        transition: background-color 0.2s;
+    }
+
+    .section-btn:hover { background-color: #1976d2; }
+    .section-btn.active { background-color: #0d47a1; outline: 2px solid #000; }
+
+    .report-btn-wrapper { margin-top: 60px; }
+    .btn-report { 
+        background-color: #2196f3; 
+        color: white; 
+        padding: 12px 60px; 
+        border-radius: 8px; 
+        text-decoration: none; 
+        font-weight: bold; 
+        font-size: 18px; 
+        display: inline-block; 
+    }
+</style>
+
+<div class="selection-container">
+    <h1>SELECT MACHINE & SECTION</h1>
+
+    <div class="machine-select-wrapper">
+        <label>Select Machine:</label>
+        <select id="machineSelect" class="form-select-custom">
+            <option value="">Select</option>
+                            <option value="1" data-name="M-1">M-1</option>
+                            <option value="2" data-name="M-2">M-2</option>
+                            <option value="3" data-name="M-3">M-3</option>
+                            <option value="4" data-name="M-4">M-4</option>
+                            <option value="5" data-name="M-5">M-5</option>
+                            <option value="6" data-name="M-6">M-6</option>
+                            <option value="7" data-name="M-7">M-7</option>
+                            <option value="8" data-name="M-8">M-8</option>
+                            <option value="9" data-name="M-9">M-9</option>
+                            <option value="10" data-name="M-10">M-10</option>
+                            <option value="11" data-name="M-11">M-11</option>
+                            <option value="12" data-name="M-12">M-12</option>
+                            <option value="13" data-name="M-13">M-13</option>
+                            <option value="14" data-name="M-14">M-14</option>
+                            <option value="15" data-name="M-15">M-15</option>
+                            <option value="16" data-name="M-16">M-16</option>
+                            <option value="17" data-name="M-17">M-17</option>
+                            <option value="18" data-name="M-18">M-18</option>
+                            <option value="19" data-name="M-19">M-19</option>
+                            <option value="20" data-name="M-20">M-20</option>
+                            <option value="21" data-name="M-21">M-21</option>
+                            <option value="22" data-name="M-22">M-22</option>
+                            <option value="23" data-name="M-23">M-23</option>
+                            <option value="24" data-name="M-24">M-24</option>
+                            <option value="25" data-name="M-25">M-25</option>
+                            <option value="26" data-name="M-26">M-26</option>
+                            <option value="27" data-name="M-27">M-27</option>
+                            <option value="28" data-name="M-28">M-28</option>
+                            <option value="29" data-name="M-29">M-29</option>
+                            <option value="30" data-name="M-30">M-30</option>
+                            <option value="31" data-name="M-31">M-31</option>
+                            <option value="32" data-name="M-32">M-32</option>
+                            <option value="33" data-name="M-33">M-33</option>
+                            <option value="34" data-name="M-34">M-34</option>
+                            <option value="35" data-name="M-35">M-35</option>
+                            <option value="36" data-name="M-36">M-36</option>
+                            <option value="37" data-name="M-37">M-37</option>
+                            <option value="38" data-name="M-38">M-38</option>
+                            <option value="39" data-name="M-39">M-39</option>
+                            <option value="40" data-name="M-40">M-40</option>
+                            <option value="41" data-name="M-41">M-41</option>
+                            <option value="42" data-name="M-42">M-42</option>
+                            <option value="43" data-name="M-43">M-43</option>
+                            <option value="44" data-name="M-44">M-44</option>
+                            <option value="45" data-name="M-45">M-45</option>
+                            <option value="46" data-name="M-46">M-46</option>
+                            <option value="47" data-name="M-47">M-47</option>
+                            <option value="48" data-name="M-48">M-48</option>
+                            <option value="49" data-name="M-49">M-49</option>
+                            <option value="50" data-name="M-50">M-50</option>
+                            <option value="51" data-name="M-51">M-51</option>
+                            <option value="52" data-name="M-52">M-52</option>
+                            <option value="53" data-name="M-53">M-53</option>
+                            <option value="54" data-name="M-54">M-54</option>
+                            <option value="55" data-name="M-55">M-55</option>
+                            <option value="56" data-name="M-56">M-56</option>
+                            <option value="57" data-name="M-57">M-57</option>
+                            <option value="58" data-name="M-58">M-58</option>
+                            <option value="59" data-name="M-59">M-59</option>
+                            <option value="60" data-name="M-60">M-60</option>
+                            <option value="61" data-name="M-61">M-61</option>
+                            <option value="62" data-name="M-62">M-62</option>
+                            <option value="63" data-name="M-63">M-63</option>
+                            <option value="64" data-name="M-64">M-64</option>
+                            <option value="65" data-name="M-65">M-65</option>
+                            <option value="66" data-name="M-66">M-66</option>
+                            <option value="67" data-name="M-67">M-67</option>
+                            <option value="68" data-name="M-68">M-68</option>
+                            <option value="69" data-name="M-69">M-69</option>
+                            <option value="70" data-name="M-70">M-70</option>
+                            <option value="71" data-name="M-71">M-71</option>
+                            <option value="72" data-name="M-72">M-72</option>
+                            <option value="73" data-name="M-73">M-73</option>
+                            <option value="74" data-name="M-74">M-74</option>
+                            <option value="75" data-name="M-75">M-75</option>
+                            <option value="76" data-name="M-76">M-76</option>
+                            <option value="77" data-name="M-77">M-77</option>
+                            <option value="78" data-name="M-78">M-78</option>
+                            <option value="79" data-name="M-79">M-79</option>
+                            <option value="80" data-name="M-80">M-80</option>
+                            <option value="81" data-name="M-81">M-81</option>
+                            <option value="82" data-name="M-82">M-82</option>
+                            <option value="83" data-name="M-83">M-83</option>
+                            <option value="84" data-name="M-84">M-84</option>
+                            <option value="85" data-name="M-85">M-85</option>
+                            <option value="86" data-name="M-86">M-86</option>
+                            <option value="87" data-name="M-87">M-87</option>
+                            <option value="88" data-name="M-88">M-88</option>
+                            <option value="89" data-name="M-89">M-89</option>
+                            <option value="90" data-name="M-90">M-90</option>
+                            <option value="91" data-name="M-91">M-91</option>
+                            <option value="92" data-name="M-92">M-92</option>
+                            <option value="93" data-name="M-93">M-93</option>
+                            <option value="94" data-name="M-94">M-94</option>
+                            <option value="95" data-name="M-95">M-95</option>
+                            <option value="96" data-name="M-96">M-96</option>
+                            <option value="97" data-name="M-97">M-97</option>
+                            <option value="98" data-name="M-98">M-98</option>
+                            <option value="99" data-name="M-99">M-99</option>
+                            <option value="100" data-name="M-100">M-100</option>
+                    </select>
+    </div>
+
+    <div class="section-buttons" id="sectionButtons">
+        
+                    <button type="button" class="section-btn" onclick="navigateToSection('A-OUT', this)">
+                A-OUT
+            </button>
+                    <button type="button" class="section-btn" onclick="navigateToSection('A-IN', this)">
+                A-IN
+            </button>
+                    <button type="button" class="section-btn" onclick="navigateToSection('B-OUT', this)">
+                B-OUT
+            </button>
+                    <button type="button" class="section-btn" onclick="navigateToSection('B-IN', this)">
+                B-IN
+            </button>
+                    <button type="button" class="section-btn" onclick="navigateToSection('C-OUT', this)">
+                C-OUT
+            </button>
+                    <button type="button" class="section-btn" onclick="navigateToSection('C-IN', this)">
+                C-IN
+            </button>
+                    <button type="button" class="section-btn" onclick="navigateToSection('D-OUT', this)">
+                D-OUT
+            </button>
+                    <button type="button" class="section-btn" onclick="navigateToSection('D-IN', this)">
+                D-IN
+            </button>
+            </div>
+
+    <div class="report-btn-wrapper" style="display: flex; gap: 20px; justify-content: center;">
+        <a href="http://127.0.0.1:8000/reports" class="btn-report">REPORT (Legacy)</a>
+    </div>
+</div>
+    </div>
+
+    <script>
+        // Set up CSRF token for AJAX requests
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        
+        // Helper function for AJAX requests
+        async function makeRequest(url, options = {}) {
+            const defaultOptions = {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json'
+                }
+            };
+            
+            const mergedOptions = {
+                ...defaultOptions,
+                ...options,
+                headers: {
+                    ...defaultOptions.headers,
+                    ...options.headers
+                }
+            };
+            
+            try {
+                const response = await fetch(url, mergedOptions);
+                
+                // Try to parse JSON response
+                let data;
+                try {
+                    data = await response.json();
+                } catch (e) {
+                    // If response is not JSON, create error message
+                    const text = await response.text();
+                    throw new Error(text || 'Invalid response from server');
+                }
+                
+                if (!response.ok) {
+                    // Handle validation errors
+                    if (data.errors) {
+                        const errorMessages = Object.values(data.errors).flat().join(', ');
+                        throw new Error(errorMessages);
+                    }
+                    throw new Error(data.message || data.error || 'Request failed');
+                }
+                
+                return data;
+            } catch (error) {
+                console.error('Request error:', error);
+                throw error;
+            }
+        }
+    </script>
+    <script>
+    function navigateToSection(sectionName, element) {
+        const select = document.getElementById('machineSelect');
+        const machineName = select.options[select.selectedIndex] ? select.options[select.selectedIndex].text : '';
+        
+        if (!machineName || machineName === "Select") {
+            alert("Please select a machine first!");
+            return;
+        }
+
+        // Redirects to /schedule/M-1/A-OUT
+        window.location.href = `/schedule/${machineName}/${sectionName}`;
+    }
+</script>
+</body>
+</html>
+

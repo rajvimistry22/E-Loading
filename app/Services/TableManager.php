@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Database\Schema\Blueprint;
 
 /**
  * TableManager Service
@@ -103,7 +104,7 @@ class TableManager
 
         if (self::tableExists($tableName)) {
             Log::info("Table {$tableName} already exists");
-            return true;
+            return self::ensureStopDetailColumns($tableName);
         }
 
         try {
@@ -113,17 +114,21 @@ class TableManager
                 return true;
             }
             
-            Schema::create($tableName, function ($table) {
+            Schema::create($tableName, function (Blueprint $table) {
                 $table->id();
-                $table->unsignedInteger('row_no')->nullable(); // For maintaining row order (1:1 with UI)
-                $table->datetime('start_datetime')->nullable(); // UTC datetime
-                $table->datetime('expected_end_datetime')->nullable(); // start + loading_hours
-                $table->datetime('end_datetime')->nullable(); // expected_end + machine_stop_hours
-                $table->decimal('loading_hours', 10, 2)->nullable(); // NULL for intermediate rows
-                $table->decimal('machine_stop_hours', 10, 2)->default(0); // Editable per row
+                $table->integer('row_no')->nullable();
+                $table->datetime('start_datetime')->nullable();
+                $table->datetime('expected_end_datetime')->nullable();
+                $table->datetime('end_datetime')->nullable();
+                $table->decimal('loading_hours', 10, 2)->nullable();
+                $table->decimal('machine_stop_hours', 10, 2)->default(0);
+                $table->datetime('stop_start_datetime')->nullable();
+                $table->datetime('stop_end_datetime')->nullable();
+                $table->text('stop_remarks')->nullable();
+                $table->boolean('is_cycle_complete')->default(false);
                 $table->timestamps();
-                
-                // Indexes for better query performance
+
+                // Indexes
                 $table->index('row_no');
                 $table->index('start_datetime');
                 $table->index('end_datetime');
@@ -134,6 +139,11 @@ class TableManager
             // Verify table was actually created
             if (!self::tableExists($tableName)) {
                 Log::error("Table {$tableName} creation reported success but table does not exist after creation");
+                return false;
+            }
+
+            if (!self::ensureStopDetailColumns($tableName)) {
+                Log::error("Table {$tableName} created but stop detail columns could not be verified");
                 return false;
             }
             
@@ -253,6 +263,127 @@ class TableManager
     public static function isValidSection(string $section): bool
     {
         return in_array(strtoupper($section), self::SECTIONS);
+    }
+
+    /**
+     * Ensure legacy machine-section tables contain stop detail columns.
+     *
+     * @param string $tableName
+     * @return bool
+     */
+    public static function ensureStopDetailColumns(string $tableName): bool
+    {
+        if (!self::tableExists($tableName)) {
+            return false;
+        }
+
+        try {
+            $columnsInfo = Schema::getColumnListing($tableName);
+
+            // Older production tables may still use the legacy machine_stop_time column name.
+            if (!in_array('machine_stop_hours', $columnsInfo, true)) {
+                if (in_array('machine_stop_time', $columnsInfo, true)) {
+                    try {
+                        DB::statement("ALTER TABLE `{$tableName}` CHANGE COLUMN `machine_stop_time` `machine_stop_hours` DECIMAL(10,2) DEFAULT 0");
+                        Log::info("Renamed legacy machine_stop_time column on {$tableName}");
+                    } catch (\Exception $e) {
+                        Log::warning("Failed renaming machine_stop_time on {$tableName}: " . $e->getMessage());
+                    }
+                }
+
+                $columnsInfo = Schema::getColumnListing($tableName);
+
+                if (!in_array('machine_stop_hours', $columnsInfo, true)) {
+                    Schema::table($tableName, function (Blueprint $table) use ($columnsInfo) {
+                        $column = $table->decimal('machine_stop_hours', 10, 2)->default(0)->unsigned();
+
+                        if (in_array('loading_hours', $columnsInfo, true)) {
+                            $column->after('loading_hours');
+                        } elseif (in_array('end_datetime', $columnsInfo, true)) {
+                            $column->after('end_datetime');
+                        }
+                    });
+                }
+            }
+
+            $columnsInfo = Schema::getColumnListing($tableName);
+            $needsFixLoading = in_array('loading_hours', $columnsInfo, true) && Schema::getColumnType($tableName, 'loading_hours') !== 'decimal';
+            $needsFixStop = in_array('machine_stop_hours', $columnsInfo, true) && Schema::getColumnType($tableName, 'machine_stop_hours') !== 'decimal';
+
+            if ($needsFixLoading || $needsFixStop) {
+                Log::warning("Numeric column types incorrect in {$tableName}, model will handle casting");
+            }
+
+            $needsStopStart = !Schema::hasColumn($tableName, 'stop_start_datetime');
+            $needsStopEnd = !Schema::hasColumn($tableName, 'stop_end_datetime');
+            $needsRemarks = !Schema::hasColumn($tableName, 'stop_remarks');
+
+
+            // Ensure additional columns are added if missing
+            Schema::table($tableName, function (Blueprint $table) use ($tableName, $needsStopStart, $needsStopEnd, $needsRemarks) {
+                if ($needsStopStart) {
+                    $column = $table->datetime('stop_start_datetime')->nullable();
+                    if (Schema::hasColumn($tableName, 'machine_stop_hours')) {
+                        $column->after('machine_stop_hours');
+                    }
+                }
+
+                if ($needsStopEnd) {
+                    $column = $table->datetime('stop_end_datetime')->nullable();
+                    if (Schema::hasColumn($tableName, 'stop_start_datetime')) {
+                        $column->after('stop_start_datetime');
+                    }
+                }
+
+                if ($needsRemarks) {
+                    $column = $table->text('stop_remarks')->nullable();
+                    if (Schema::hasColumn($tableName, 'stop_end_datetime')) {
+                        $column->after('stop_end_datetime');
+                    }
+                }
+            });
+
+            // Re-fetch column listing before the check
+            $columnsInfo = Schema::getColumnListing($tableName);
+            
+            // Ensure cycle-complete flag exists (robust against partial/legacy tables)
+            if (!in_array('is_cycle_complete', $columnsInfo)) {
+                try {
+                    Log::info("Adding is_cycle_complete to {$tableName}...");
+                    Schema::table($tableName, function (Blueprint $table) {
+                        $table->boolean('is_cycle_complete')->default(false);
+                    });
+                    Log::info("Successfully added is_cycle_complete to {$tableName}");
+                    // Refresh listing
+                    $columnsInfo = Schema::getColumnListing($tableName);
+                } catch (\Exception $e) {
+                    Log::error("Failed adding is_cycle_complete to {$tableName}: " . $e->getMessage());
+                    // Fallback to direct SQL if Schema facade fails
+                    try {
+                        DB::statement("ALTER TABLE `{$tableName}` ADD COLUMN `is_cycle_complete` TINYINT(1) DEFAULT 0");
+                        Log::info("Added is_cycle_complete to {$tableName} via direct SQL");
+                        $columnsInfo = Schema::getColumnListing($tableName);
+                    } catch (\Exception $e2) {
+                        Log::error("Direct SQL also failed for {$tableName}: " . $e2->getMessage());
+                    }
+                }
+            }
+
+            // Final re-verify
+            $finalColumns = Schema::getColumnListing($tableName);
+            $essentialColumns = ['row_no', 'start_datetime', 'end_datetime', 'loading_hours', 'is_cycle_complete'];
+            foreach ($essentialColumns as $col) {
+                if (!in_array($col, $finalColumns)) {
+                    Log::error("Table {$tableName} is missing essential column after ensuring: {$col}");
+                    return false;
+                }
+            }
+            
+            return true;
+        } catch (\Exception $e) {
+            Log::error("Failed ensuring stop detail columns on {$tableName}: " . $e->getMessage());
+            return false;
+        }
     }
 
     /**

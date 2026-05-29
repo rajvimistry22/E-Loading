@@ -13,9 +13,9 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // Seed Machines (M-1 to M-1000)
+        // Seed Machines (M-1 to M-100)
         $this->command->info('Seeding machines...');
-        for ($i = 1; $i <= 1000; $i++) {
+        for ($i = 1; $i <= 100; $i++) {
             Machine::create([
                 'name' => "M-{$i}",
                 'description' => "Machine {$i}",

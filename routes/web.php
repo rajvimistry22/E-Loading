@@ -38,6 +38,7 @@ Route::get('/api/challans', [ChallanController::class, 'getChallans'])->name('ap
 Route::post('/api/challans/generate', [ChallanController::class, 'generate'])->name('api.challans.generate');
 Route::post('/api/challans/update-stop-time', [ChallanController::class, 'updateStopTime'])->name('api.challans.update-stop-time');
 Route::post('/api/challans/update-stop-time-cascade', [ChallanController::class, 'updateStopTimeWithCascade'])->name('api.challans.update-stop-time-cascade');
+Route::post('/api/challans/update-stop-time-details', [ChallanController::class, 'updateStopTimeDetails'])->name('api.challans.update-stop-time-details');
 Route::post('/api/challans/delete-range', [ChallanController::class, 'deleteRange'])->name('api.challans.delete-range');
 Route::put('/api/challans/{id}', [ChallanController::class, 'update'])->name('api.challans.update');
 

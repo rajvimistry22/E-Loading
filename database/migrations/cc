@@ -1,0 +1,74 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Machine-section tables are dynamic (M{number}_{SECTION}).
+     * This migration backfills the column for already-existing tables in live DBs.
+     */
+    public function up(): void
+    {
+        $tables = DB::select('SHOW TABLES');
+        if (!$tables) {
+            return;
+        }
+
+        // MySQL returns rows like: (object) ['Tables_in_dbname' => 'm2_aout']
+        $firstKey = array_key_first((array) $tables[0]);
+
+        foreach ($tables as $row) {
+            $tableName = (string) ($row->{$firstKey} ?? '');
+            if ($tableName === '') {
+                continue;
+            }
+
+            // Matches M2_AOUT, m2_aout, M100_DIN, etc.
+            if (!preg_match('/^m\\d+_[a-z]+$/i', $tableName)) {
+                continue;
+            }
+
+            if (Schema::hasColumn($tableName, 'is_cycle_complete')) {
+                continue;
+            }
+
+            Schema::table($tableName, function (Blueprint $table) {
+                $table->boolean('is_cycle_complete')->default(false);
+            });
+        }
+    }
+
+    public function down(): void
+    {
+        $tables = DB::select('SHOW TABLES');
+        if (!$tables) {
+            return;
+        }
+
+        $firstKey = array_key_first((array) $tables[0]);
+
+        foreach ($tables as $row) {
+            $tableName = (string) ($row->{$firstKey} ?? '');
+            if ($tableName === '') {
+                continue;
+            }
+
+            if (!preg_match('/^m\\d+_[a-z]+$/i', $tableName)) {
+                continue;
+            }
+
+            if (!Schema::hasColumn($tableName, 'is_cycle_complete')) {
+                continue;
+            }
+
+            Schema::table($tableName, function (Blueprint $table) {
+                $table->dropColumn('is_cycle_complete');
+            });
+        }
+    }
+};
+

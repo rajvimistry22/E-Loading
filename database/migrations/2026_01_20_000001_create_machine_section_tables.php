@@ -9,7 +9,7 @@ return new class extends Migration
     /**
      * Run the migrations.
      * 
-     * Creates all machine-section tables (M1_AOUT through M1000_DIN)
+     * Creates all machine-section tables (M1_AOUT through M50_DIN)
      */
     public function up(): void
     {
@@ -37,9 +37,9 @@ return new class extends Migration
             }
         }
 
-        // If no machines exist, create tables for machines 1-1000
+        // If no machines exist, create tables for machines 1-50
         if ($created === 0) {
-            $result = TableManager::createAllTables(1000);
+            $result = TableManager::createAllTables(50);
             $created = $result['created'];
             $failed = $result['failed'];
         }

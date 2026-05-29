@@ -41,15 +41,20 @@
     </div>
 </div>
 
+<div id="cycleSummaryContainer"></div>
+
 <div id="reportTableContainer" style="overflow-x: auto;">
     <table id="reportTable" style="width: 100%; border-collapse: collapse; margin-top: 20px; display: none;">
         <thead style="position: sticky; top: 0; background-color: #f0f0f0; z-index: 10;">
             <tr>
-                <th style="padding: 10px; border: 1px solid #ccc; min-width: 80px;">Start Time</th>
-                <th style="padding: 10px; border: 1px solid #ccc; min-width: 80px;">End Time</th>
-                <th style="padding: 10px; border: 1px solid #ccc; min-width: 100px;">Loading Duration (hrs)</th>
-                <th style="padding: 10px; border: 1px solid #ccc; min-width: 100px;">Stop Time (hrs)</th>
-                <th style="padding: 10px; border: 1px solid #ccc; min-width: 120px;">Actions</th>
+                <th style="padding: 10px; border: 1px solid #ccc; min-width: 150px;">Start Date & Time</th>
+                <th style="padding: 10px; border: 1px solid #ccc; min-width: 80px;">Cycle</th>
+                <th style="padding: 10px; border: 1px solid #ccc; min-width: 100px;">Shift</th>
+                <th style="padding: 10px; border: 1px solid #ccc; min-width: 100px;">Loading Time</th>
+                <th style="padding: 10px; border: 1px solid #ccc; min-width: 120px;">Machine Stop Time</th>
+                <th style="padding: 10px; border: 1px solid #ccc; min-width: 150px;">Expected End Date and Time</th>
+                <th style="padding: 10px; border: 1px solid #ccc; min-width: 150px;">End Date and Time</th>
+                <th style="padding: 10px; border: 1px solid #ccc; min-width: 80px;">Actions</th>
             </tr>
         </thead>
         <tbody id="reportTableBody">
@@ -124,6 +129,31 @@
         border: none;
         cursor: pointer;
     }
+    .section-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+    .section-btn {
+        padding: 8px 16px;
+        border: 1px solid #0d6efd;
+        background: #fff;
+        color: #0d6efd;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .section-btn.active {
+        background: #0d6efd;
+        color: #fff;
+    }
+    .section-btn:hover {
+        background: #e9ecef;
+    }
+    .section-btn.active:hover {
+        background: #0b5ed7;
+    }
 </style>
 @endpush
 
@@ -138,6 +168,26 @@
     document.addEventListener('DOMContentLoaded', function() {
         loadReport();
     });
+
+    function formatDisplayDate(dateString) {
+        if (!dateString) return '-';
+        try {
+            const date = new Date(dateString);
+            if (isNaN(date.getTime())) return dateString;
+            
+            // CRITICAL: Use UTC for consistent display with database and schedule
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const month = monthNames[date.getUTCMonth()];
+            const day = String(date.getUTCDate()).padStart(2, '0');
+            const year = date.getUTCFullYear();
+            const hours = String(date.getUTCHours()).padStart(2, '0');
+            const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+            
+            return `${month} ${day}, ${year}, ${hours}:${minutes}`;
+        } catch(e) {
+            return dateString;
+        }
+    }
 
     /**
      * Switch to a different section
@@ -188,28 +238,103 @@
         const tableBody = document.getElementById('reportTableBody');
         tableBody.innerHTML = '';
 
-        records.forEach(record => {
-            const row = createTableRow(record);
+        let accumulatedLoading = 0;
+        let cycleNumber = 1;
+        let hasCycles = false;
+        let cycleStartDisplay = '';
+        
+        let cycleSummaryHTML = `<div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 20px;">
+            <h4 style="margin-top:0; margin-bottom: 10px; color: #0d6efd;">Cycle Summary (84 Hrs)</h4>
+            <ul style="margin:0; padding-left: 20px; list-style-type: none;">`;
+
+        records.forEach((record, index) => {
+            const rowLoading = parseFloat(record.loading_duration) || 0;
+            
+            if (accumulatedLoading === 0) {
+                cycleStartDisplay = formatDisplayDate(record.start_time);
+            }
+            
+            accumulatedLoading += rowLoading;
+            
+            let isCycleComplete = false;
+            let currentCycleNumber = cycleNumber;
+            
+            // Cycle boundary logic: 
+            // 1. Partial shift (loading < 11.9) indicating a batch end
+            // 2. Hits 84 hours (full cycle)
+            if (rowLoading > 0 && (rowLoading < 11.9 || accumulatedLoading >= 84 - 0.001)) {
+                isCycleComplete = true;
+                hasCycles = true;
+                const cycleEndDisplay = formatDisplayDate(record.end_time);
+                
+                cycleSummaryHTML += `<li style="margin-bottom: 8px; font-size: 15px;">
+                    <strong>Cycle ${cycleNumber}:</strong> ${cycleStartDisplay} <span style="color:#6c757d; margin:0 10px;">➔</span> <span style="color: #198754; font-weight: bold;">✅ End Date & Time: ${cycleEndDisplay}</span>
+                </li>`;
+                
+                accumulatedLoading = 0; // reset for next cycle
+                cycleNumber++;
+            }
+
+            const row = createTableRow(record, isCycleComplete, currentCycleNumber);
+            if (isCycleComplete) {
+                row.classList.add('cycle-complete-row');
+                row.style.backgroundColor = '#f1f8f5'; // Light green tint for cycle ends
+            }
+            
             tableBody.appendChild(row);
         });
+        
+        cycleSummaryHTML += `</ul></div>`;
+        
+        const summaryContainer = document.getElementById('cycleSummaryContainer');
+        if (summaryContainer) {
+            summaryContainer.innerHTML = hasCycles ? cycleSummaryHTML : '';
+        }
+    }
+
+    function getShiftMarkup(datetimeValue) {
+        if (!datetimeValue) {
+            return '<span style="color: #6c757d;">-</span>';
+        }
+
+        const date = new Date(datetimeValue);
+        if (isNaN(date.getTime())) {
+            return '<span style="color: #6c757d;">-</span>';
+        }
+
+        const hour = date.getHours();
+
+        if (hour >= 8 && hour < 20) {
+            return '<span style="background: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;">Day</span>';
+        }
+
+        return '<span style="background: #cce7ff; color: #004085; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;">Night</span>';
+    }
+
+    function createShiftCell(startTimeValue) {
+        const cell = document.createElement('td');
+        cell.style.padding = '8px';
+        cell.style.border = '1px solid #ccc';
+        cell.style.textAlign = 'center';
+        cell.className = 'shift-cell';
+        cell.innerHTML = getShiftMarkup(startTimeValue);
+        return cell;
     }
 
     /**
      * Create a table row for a record
      */
-    function createTableRow(record) {
+    function createTableRow(record, isCycleComplete = false, cycleNum = null) {
         const row = document.createElement('tr');
         row.setAttribute('data-id', record.id);
         row.setAttribute('data-record-id', record.id);
 
         // Start Time (full datetime)
-        // Parse ISO string to display format, or use as-is if already formatted
         let startTimeDisplay = '';
         if (record.start_time) {
             try {
                 const startDate = new Date(record.start_time);
                 if (!isNaN(startDate.getTime())) {
-                    // Format as YYYY-MM-DDTHH:mm for datetime-local input
                     const year = startDate.getFullYear();
                     const month = String(startDate.getMonth() + 1).padStart(2, '0');
                     const day = String(startDate.getDate()).padStart(2, '0');
@@ -222,36 +347,63 @@
             }
         }
         const startTimeCell = createEditableCell(startTimeDisplay, 'datetime-local', 'start_time', record.id);
+        startTimeCell.style.fontWeight = 'bold';
         row.appendChild(startTimeCell);
 
-        // End Time (full datetime)
-        let endTimeDisplay = '';
-        if (record.end_time) {
-            try {
-                const endDate = new Date(record.end_time);
-                if (!isNaN(endDate.getTime())) {
-                    // Format as YYYY-MM-DDTHH:mm for datetime-local input
-                    const year = endDate.getFullYear();
-                    const month = String(endDate.getMonth() + 1).padStart(2, '0');
-                    const day = String(endDate.getDate()).padStart(2, '0');
-                    const hours = String(endDate.getHours()).padStart(2, '0');
-                    const minutes = String(endDate.getMinutes()).padStart(2, '0');
-                    endTimeDisplay = `${year}-${month}-${day}T${hours}:${minutes}`;
-                }
-            } catch (e) {
-                endTimeDisplay = record.end_time;
+        // Cycle Cell
+        const cycleCell = document.createElement('td');
+        cycleCell.style.padding = '8px';
+        cycleCell.style.border = '1px solid #ccc';
+        cycleCell.style.textAlign = 'center';
+        if (cycleNum) {
+            if (isCycleComplete) {
+                cycleCell.innerHTML = `<span style="background: #28a745; color: #fff; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;">✅ C${cycleNum}</span>`;
+            } else {
+                cycleCell.innerHTML = `<span style="background: #e9ecef; color: #495057; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;">C${cycleNum}</span>`;
             }
+        } else {
+            cycleCell.innerHTML = '-';
         }
-        const endTimeCell = createEditableCell(endTimeDisplay, 'datetime-local', 'end_time', record.id);
-        row.appendChild(endTimeCell);
+        row.appendChild(cycleCell);
 
-        // Loading Duration
+        const shiftCell = createShiftCell(record.start_time || startTimeDisplay);
+        row.appendChild(shiftCell);
+
+        // Loading Time
         const loadingCell = createEditableCell(record.loading_duration || '0', 'number', 'loading_duration', record.id);
         row.appendChild(loadingCell);
 
-        // Stop Time
+        // Machine Stop Time
         const stopTimeCell = createEditableCell(record.machine_stop_time || '0', 'number', 'machine_stop_time', record.id);
         row.appendChild(stopTimeCell);
+
+        // Expected End Date and Time (from database)
+        let expectedEndTimeDisplay = formatDisplayDate(record.expected_end_datetime || record.end_time);
+        const expectedEndCell = document.createElement('td');
+        expectedEndCell.style.padding = '8px';
+        expectedEndCell.style.border = '1px solid #ccc';
+        expectedEndCell.style.textAlign = 'center';
+        expectedEndCell.textContent = expectedEndTimeDisplay;
+        row.appendChild(expectedEndCell);
+
+        // End Date and Time
+        let endTimeDisplay = formatDisplayDate(record.end_time);
+        let rawEndTime = record.end_time || '';
+        
+        // Only show end time if the cycle is complete
+        const finalEndTimeDisplay = isCycleComplete ? endTimeDisplay : '-';
+        
+        const endTimeCell = createEditableCell(finalEndTimeDisplay, 'datetime-local', 'end_time', record.id, rawEndTime);
+        if (isCycleComplete) {
+            endTimeCell.style.color = '#198754';
+            endTimeCell.style.fontWeight = 'bold';
+            // Add a small calendar icon prefix if complete, matching Image 3
+            const valSpan = endTimeCell.querySelector('.cell-value');
+            if (valSpan && valSpan.textContent !== '-') {
+                valSpan.innerHTML = '📅 ' + valSpan.innerHTML;
+            }
+        }
+        row.appendChild(endTimeCell);
 
         // Actions
         const actionsCell = document.createElement('td');
@@ -272,7 +424,7 @@
     /**
      * Create an editable cell
      */
-    function createEditableCell(value, type, fieldName, recordId) {
+    function createEditableCell(value, type, fieldName, recordId, rawValue = null) {
         const cell = document.createElement('td');
         cell.style.padding = '4px';
         cell.style.border = '1px solid #ccc';
@@ -282,25 +434,24 @@
 
         let displayValue = value || '';
         
-        // For datetime fields, format for display
-        if ((fieldName === 'start_time' || fieldName === 'end_time') && displayValue) {
+        if ((fieldName === 'start_time' || fieldName === 'end_time') && displayValue && displayValue !== '-') {
             try {
                 const date = new Date(displayValue);
                 if (!isNaN(date.getTime())) {
-                    // Display in readable format: YYYY-MM-DD HH:mm
-                    const year = date.getFullYear();
-                    const month = String(date.getMonth() + 1).padStart(2, '0');
-                    const day = String(date.getDate()).padStart(2, '0');
-                    const hours = String(date.getHours()).padStart(2, '0');
-                    const minutes = String(date.getMinutes()).padStart(2, '0');
-                    displayValue = `${year}-${month}-${day} ${hours}:${minutes}`;
+                    // Display format: MMM dd, YYYY, HH:mm (UTC)
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const month = monthNames[date.getUTCMonth()];
+                    const day = String(date.getUTCDate()).padStart(2, '0');
+                    const year = date.getUTCFullYear();
+                    const hours = String(date.getUTCHours()).padStart(2, '0');
+                    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+                    displayValue = `${month} ${day}, ${year}, ${hours}:${minutes}`;
                 }
-            } catch (e) {
-                // Keep original value if parsing fails
-            }
+            } catch (e) {}
         }
         
-        cell.innerHTML = `<span class="cell-value">${displayValue}</span><span class="save-indicator" id="indicator-${recordId}-${fieldName}"></span>`;
+        const actualRawValue = rawValue !== null ? rawValue : (value || '');
+        cell.innerHTML = `<span class="cell-value" data-raw-value="${actualRawValue}">${displayValue}</span><span class="save-indicator" id="indicator-${recordId}-${fieldName}"></span>`;
 
         cell.addEventListener('click', function(e) {
             if (editingCell && editingCell !== cell) {
@@ -314,7 +465,6 @@
         return cell;
     }
 
-
     /**
      * Start editing a cell
      */
@@ -326,7 +476,29 @@
         editingCell = cell;
         cell.classList.add('editing');
         const valueSpan = cell.querySelector('.cell-value');
-        const currentValue = valueSpan ? valueSpan.textContent.trim() : '';
+        
+        let currentValue = '';
+        if (valueSpan) {
+            currentValue = valueSpan.getAttribute('data-raw-value');
+            if (currentValue === null || currentValue === undefined || currentValue === '') {
+                currentValue = valueSpan.textContent.trim();
+                if (currentValue === '-') currentValue = '';
+            }
+        }
+        
+        if (type === 'datetime-local' && currentValue && !currentValue.includes('T')) {
+            try {
+                const date = new Date(currentValue);
+                if (!isNaN(date.getTime())) {
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    const hours = String(date.getHours()).padStart(2, '0');
+                    const minutes = String(date.getMinutes()).padStart(2, '0');
+                    currentValue = `${year}-${month}-${day}T${hours}:${minutes}`;
+                }
+            } catch (e) {}
+        }
         
         let input;
         if (type === 'textarea') {
@@ -341,24 +513,9 @@
             if (type === 'number') {
                 input.step = '0.01';
                 input.min = '0';
-            } else if (type === 'datetime-local') {
-                // Ensure proper format for datetime-local input
-                if (currentValue && !currentValue.includes('T')) {
-                    // If value is just time, try to combine with today's date
-                    const today = new Date();
-                    const [hours, minutes] = currentValue.split(':');
-                    if (hours && minutes) {
-                        today.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-                        const year = today.getFullYear();
-                        const month = String(today.getMonth() + 1).padStart(2, '0');
-                        const day = String(today.getDate()).padStart(2, '0');
-                        input.value = `${year}-${month}-${day}T${hours}:${minutes}`;
-                    }
-                }
             }
         }
 
-        // Replace content
         if (valueSpan) {
             valueSpan.style.display = 'none';
         }
@@ -368,7 +525,6 @@
             input.select();
         }
 
-        // Save on Enter (for non-textarea) or blur
         input.addEventListener('blur', function() {
             finishEdit(cell, input.value);
         });
@@ -389,9 +545,6 @@
         });
     }
 
-    /**
-     * Cancel editing
-     */
     function cancelEdit() {
         if (editingCell) {
             editingCell.classList.remove('editing');
@@ -407,26 +560,19 @@
         }
     }
 
-    /**
-     * Finish editing and save
-     */
     function finishEdit(cell, newValue) {
         const fieldName = cell.getAttribute('data-field');
         const recordId = cell.getAttribute('data-record-id');
         
         cancelEdit();
         
-        // Update display - format datetime fields for display
         const valueSpan = cell.querySelector('.cell-value');
         if (valueSpan) {
             let displayValue = newValue || '';
-            
-            // For datetime fields, format for display
-            if ((fieldName === 'start_time' || fieldName === 'end_time') && displayValue) {
+            if ((fieldName === 'start_time' || fieldName === 'end_time') && displayValue && displayValue !== '-') {
                 try {
                     const date = new Date(displayValue);
                     if (!isNaN(date.getTime())) {
-                        // Display in readable format: YYYY-MM-DD HH:mm
                         const year = date.getFullYear();
                         const month = String(date.getMonth() + 1).padStart(2, '0');
                         const day = String(date.getDate()).padStart(2, '0');
@@ -434,124 +580,59 @@
                         const minutes = String(date.getMinutes()).padStart(2, '0');
                         displayValue = `${year}-${month}-${day} ${hours}:${minutes}`;
                     }
-                } catch (e) {
-                    // Keep original value if parsing fails
-                }
+                } catch (e) {}
             }
-            
+            valueSpan.setAttribute('data-raw-value', newValue || '');
             valueSpan.textContent = displayValue;
         }
 
-        // Auto-save with debounce
+        if (fieldName === 'start_time') {
+            const row = cell.closest('tr');
+            const shiftCell = row ? row.querySelector('.shift-cell') : null;
+            if (shiftCell) {
+                shiftCell.innerHTML = getShiftMarkup(newValue);
+            }
+        }
+
         if (autoSaveTimeout) {
             clearTimeout(autoSaveTimeout);
         }
-        
         autoSaveTimeout = setTimeout(() => {
-            // For datetime fields, ensure we send ISO format
-            let valueToSave = newValue;
-            if ((fieldName === 'start_time' || fieldName === 'end_time') && newValue) {
-                try {
-                    const date = new Date(newValue);
-                    if (!isNaN(date.getTime())) {
-                        valueToSave = date.toISOString().slice(0, 16); // YYYY-MM-DDTHH:mm
-                    }
-                } catch (e) {
-                    // Keep original value
-                }
-            }
-            saveField(recordId, fieldName, valueToSave);
+            saveField(recordId, fieldName, newValue);
         }, 500);
     }
 
-    /**
-     * Save a single field
-     */
     async function saveField(recordId, fieldName, value) {
+        if (recordId.toString().startsWith('new-')) return;
+
         const indicator = document.getElementById(`indicator-${recordId}-${fieldName}`);
         if (indicator) {
-            indicator.textContent = '💾';
+            indicator.textContent = '...';
             indicator.className = 'save-indicator saving';
         }
 
         try {
-            // Get current row data
-            const row = document.querySelector(`tr[data-record-id="${recordId}"]`);
-            if (!row) return;
-
-            const formData = {
-                machine_number: machineNumber,
-                section: currentSection,
-                id: recordId,
-            };
-
-            // Get all field values from the row
-            const cells = row.querySelectorAll('[data-field]');
-            cells.forEach(cell => {
-                const field = cell.getAttribute('data-field');
-                const valueSpan = cell.querySelector('.cell-value');
-                if (valueSpan) {
-                    let value = valueSpan.textContent.trim();
-                    
-                    // For datetime fields, convert datetime-local format to ISO string
-                    if ((field === 'start_time' || field === 'end_time') && value) {
-                        // If value is in datetime-local format (YYYY-MM-DDTHH:mm), convert to ISO
-                        if (value.includes('T')) {
-                            // Already in correct format, just ensure it's a valid datetime
-                            const date = new Date(value);
-                            if (!isNaN(date.getTime())) {
-                                formData[field] = date.toISOString().slice(0, 16); // YYYY-MM-DDTHH:mm format
-                            } else {
-                                formData[field] = value;
-                            }
-                        } else {
-                            formData[field] = value;
-                        }
-                    } else {
-                        formData[field] = value;
-                    }
-                }
-            });
-
-            // Override with the changed field
-            // For datetime fields, ensure proper format
-            if ((fieldName === 'start_time' || fieldName === 'end_time') && value) {
-                // If value is in datetime-local format (YYYY-MM-DDTHH:mm), convert to ISO
-                if (value.includes('T')) {
-                    const date = new Date(value);
-                    if (!isNaN(date.getTime())) {
-                        formData[fieldName] = date.toISOString().slice(0, 16); // YYYY-MM-DDTHH:mm
-                    } else {
-                        formData[fieldName] = value;
-                    }
-                } else {
-                    formData[fieldName] = value;
-                }
-            } else {
-                formData[fieldName] = value;
-            }
-
             const data = await makeRequest('/api/reports/machine/save', {
                 method: 'POST',
-                body: JSON.stringify(formData)
+                body: JSON.stringify({
+                    machine_number: machineNumber,
+                    section: currentSection,
+                    id: recordId,
+                    [fieldName === 'machine_stop_time' ? 'machine_stop_time' : fieldName]: value
+                })
             });
 
             if (data.success) {
-                // Log table name for verification (visible in browser console)
-                if (data.table_name) {
-                    console.log(`✓ Data saved to table: ${data.table_name}`);
-                }
-                
                 if (indicator) {
                     indicator.textContent = '✓';
                     indicator.className = 'save-indicator saved';
-                    setTimeout(() => {
-                        indicator.textContent = '';
-                        indicator.className = 'save-indicator';
-                    }, 2000);
+                    setTimeout(() => { indicator.textContent = ''; }, 2000);
+                }
+                if (fieldName === 'loading_duration' || fieldName === 'start_time') {
+                    loadReport();
                 }
             } else {
-                throw new Error(data.message || 'Save failed');
+                throw new Error(data.message);
             }
         } catch (error) {
             if (indicator) {
@@ -559,23 +640,17 @@
                 indicator.className = 'save-indicator error';
             }
             showAlert('Failed to save: ' + error.message, 'error');
-            console.error('Error saving field:', error);
         }
     }
 
-    /**
-     * Add a new row
-     */
     function addNewRow() {
         const tableBody = document.getElementById('reportTableBody');
         const table = document.getElementById('reportTable');
         const emptyState = document.getElementById('emptyState');
 
-        // Show table if hidden
         table.style.display = 'table';
         emptyState.style.display = 'none';
 
-        // Create new record
         const newRecord = {
             id: 'new-' + Date.now(),
             start_time: '',
@@ -586,32 +661,25 @@
 
         const row = createTableRow(newRecord);
         tableBody.appendChild(row);
-
-        // Scroll to new row
         row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
-        // Auto-save new row
         setTimeout(() => {
             saveNewRow(newRecord.id, row);
         }, 100);
     }
 
-    /**
-     * Save a new row
-     */
     async function saveNewRow(tempId, row) {
         const formData = {
             machine_number: machineNumber,
             section: currentSection,
         };
 
-        // Get all field values
         const cells = row.querySelectorAll('[data-field]');
         cells.forEach(cell => {
             const field = cell.getAttribute('data-field');
             const valueSpan = cell.querySelector('.cell-value');
             if (valueSpan) {
-                formData[field] = valueSpan.textContent.trim();
+                formData[field] = valueSpan.getAttribute('data-raw-value') || valueSpan.textContent.trim();
             }
         });
 
@@ -622,27 +690,21 @@
             });
 
             if (data.success && data.data) {
-                // Update row with real ID
                 row.setAttribute('data-id', data.data.id);
                 row.setAttribute('data-record-id', data.data.id);
                 row.querySelectorAll('[data-record-id]').forEach(el => {
                     el.setAttribute('data-record-id', data.data.id);
                 });
                 showAlert('Record created successfully', 'success');
+                loadReport();
             }
         } catch (error) {
             showAlert('Failed to create record: ' + error.message, 'error');
-            console.error('Error creating record:', error);
         }
     }
 
-    /**
-     * Delete a record
-     */
-    async function deleteRecord(recordId) {
-        if (!confirm('Are you sure you want to delete this record?')) {
-            return;
-        }
+    async function deleteRecord(id) {
+        if (!confirm('Are you sure you want to delete this record?')) return;
 
         try {
             const data = await makeRequest('/api/reports/machine/delete', {
@@ -650,47 +712,54 @@
                 body: JSON.stringify({
                     machine_number: machineNumber,
                     section: currentSection,
-                    id: recordId
+                    id: id
                 })
             });
 
             if (data.success) {
-                const row = document.querySelector(`tr[data-record-id="${recordId}"]`);
-                if (row) {
-                    row.remove();
-                }
                 showAlert('Record deleted successfully', 'success');
-                
-                // Check if table is empty
-                const tableBody = document.getElementById('reportTableBody');
-                if (tableBody.children.length === 0) {
-                    document.getElementById('reportTable').style.display = 'none';
-                    document.getElementById('emptyState').style.display = 'block';
-                }
+                loadReport();
             } else {
-                throw new Error(data.message || 'Delete failed');
+                throw new Error(data.message);
             }
         } catch (error) {
             showAlert('Failed to delete record: ' + error.message, 'error');
-            console.error('Error deleting record:', error);
         }
     }
 
-    /**
-     * Show alert message
-     */
-    function showAlert(message, type = 'success') {
+    function showAlert(message, type) {
         const container = document.getElementById('alertContainer');
         const alert = document.createElement('div');
-        alert.className = `alert alert-${type === 'error' ? 'error' : 'success'}`;
+        alert.className = `alert alert-${type === 'success' ? 'success' : 'danger'}`;
+        alert.style.padding = '10px 15px';
+        alert.style.marginBottom = '15px';
+        alert.style.borderRadius = '4px';
+        alert.style.backgroundColor = type === 'success' ? '#d4edda' : '#f8d7da';
+        alert.style.color = type === 'success' ? '#155724' : '#721c24';
+        alert.style.border = `1px solid ${type === 'success' ? '#c3e6cb' : '#f5c6cb'}`;
         alert.textContent = message;
+        
         container.innerHTML = '';
         container.appendChild(alert);
+        
+        setTimeout(() => { alert.remove(); }, 3000);
+    }
 
-        // Auto-hide after 5 seconds
-        setTimeout(() => {
-            alert.remove();
-        }, 5000);
+    async function makeRequest(url, options = {}) {
+        const defaultOptions = {
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                'Accept': 'application/json'
+            }
+        };
+        
+        const response = await fetch(url, { ...defaultOptions, ...options });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Request failed');
+        }
+        return await response.json();
     }
 </script>
 @endpush

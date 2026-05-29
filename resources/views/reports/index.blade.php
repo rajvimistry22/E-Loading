@@ -21,6 +21,20 @@
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('reportDate').value = today;
     });
+
+    function getShiftLabel(datetimeValue) {
+        if (!datetimeValue) {
+            return '-';
+        }
+
+        const date = new Date(datetimeValue);
+        if (isNaN(date.getTime())) {
+            return '-';
+        }
+
+        const hour = date.getUTCHours();
+        return (hour >= 8 && hour < 20) ? 'Day' : 'Night';
+    }
     
     async function fetchReport() {
         const date = document.getElementById('reportDate').value;
@@ -34,38 +48,13 @@
         reportDiv.innerHTML = `<p style="text-align: center; padding: 20px;">Loading report for <strong>${date}</strong>...</p>`;
 
         try {
-            // Get CSRF token
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-            
-            if (!csrfToken) {
-                throw new Error('CSRF token not found. Please refresh the page.');
-            }
-            
-            // Use fetch directly with proper error handling
-            const response = await fetch('/api/reports/daily', {
+            const data = await makeRequest('/api/reports/daily', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken,
                     'X-Requested-With': 'XMLHttpRequest'
                 },
-                body: JSON.stringify({ date: date })
+                body: JSON.stringify({ date })
             });
-            
-            if (!response.ok) {
-                let errorMessage = `Server error: ${response.status}`;
-                try {
-                    const errorData = await response.json();
-                    errorMessage = errorData.message || errorData.error || errorMessage;
-                } catch (e) {
-                    const errorText = await response.text();
-                    errorMessage = errorText || errorMessage;
-                }
-                throw new Error(errorMessage);
-            }
-            
-            const data = await response.json();
 
             if (data.success) {
                 if (!data.data || data.data.length === 0) {
@@ -114,73 +103,24 @@
                             <tr>
                                 <th>Machine</th>
                                 <th>Section</th>
+                                <th>Cycle</th>
+                                <th>Shift</th>
                                 <th>End Date & Time</th>
                             </tr>
                         </thead>
                         <tbody>
                 `;
 
-                // Group data by machine and section for rowspan calculation
-                const grouped = {};
-                data.data.forEach(record => {
-                    const key = `${record.machine}_${record.section}`;
-                    if (!grouped[key]) {
-                        grouped[key] = {
-                            machine: record.machine,
-                            section: record.section,
-                            records: []
-                        };
-                    }
-                    grouped[key].records.push(record);
-                });
-
-                // Calculate rowspans
-                const machineRowSpans = {};
-                Object.values(grouped).forEach(group => {
-                    if (!machineRowSpans[group.machine]) {
-                        machineRowSpans[group.machine] = 0;
-                    }
-                    machineRowSpans[group.machine] += group.records.length;
-                });
-
-                // Render table rows
-                let currentMachine = null;
-                let currentSection = null;
-                let machineRowSpanUsed = 0;
-                let sectionRowSpanUsed = 0;
-
                 data.data.forEach((record, index) => {
-                    const isNewMachine = currentMachine !== record.machine;
-                    const isNewSection = currentSection !== record.section || isNewMachine;
-                    
-                    html += `<tr>`;
-                    
-                    // Machine name (only in first row of machine)
-                    if (isNewMachine) {
-                        currentMachine = record.machine;
-                        currentSection = null; // Reset section when machine changes
-                        machineRowSpanUsed = 0;
-                        const rowspan = machineRowSpans[record.machine];
-                        html += `<td class="machine-header" rowspan="${rowspan}">${record.machine}</td>`;
-                    }
-                    
-                    // Section name (only in first row of section)
-                    if (isNewSection) {
-                        currentSection = record.section;
-                        sectionRowSpanUsed = 0;
-                        const sectionRecords = grouped[`${record.machine}_${record.section}`].records;
-                        html += `<td class="section-header" rowspan="${sectionRecords.length}">${record.section}</td>`;
-                    }
-                    
-                    // Record details - only end date & time
                     html += `
-                        <td>${record.end_datetime_display}</td>
+                        <tr>
+                            <td class="machine-header">${record.machine}</td>
+                            <td class="section-header">${record.section}</td>
+                            <td><span style="background: #28a745; color: #fff; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;">✅ ${record.cycle || '-'}</span></td>
+                            <td>${getShiftLabel(record.end_datetime)}</td>
+                            <td style="white-space: nowrap;"><span style="color: #198754; font-weight: bold;">📅 ${record.end_datetime_display}</span></td>
+                        </tr>
                     `;
-                    
-                    html += `</tr>`;
-                    
-                    machineRowSpanUsed++;
-                    sectionRowSpanUsed++;
                 });
 
                 html += `
